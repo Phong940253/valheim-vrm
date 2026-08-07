@@ -90,8 +90,8 @@
 		<Reference Include="SpringBoneJobs" HintPath="$(LIBS_MANAGED)/SpringBoneJobs.dll" />
 
 		<!-- Unity Extra -->
-		<Reference Include="Unity.Burst" HintPath="$(VALHEIM_MANAGED)/Unity.Burst.dll" />
-		<Reference Include="Unity.Mathematics" HintPath="$(VALHEIM_MANAGED)/Unity.Mathematics.dll" />
+		<Reference Include="Unity.Burst" HintPath="$(LIBS_MANAGED)/Unity.Burst.dll" />
+		<Reference Include="Unity.Mathematics" HintPath="$(LIBS_MANAGED)/Unity.Mathematics.dll" />
 
 		<!-- Image Stuff -->
 		<Reference Include="AsyncImageLoader" HintPath="$(LIBS_MANAGED)/AsyncImageLoader.Runtime.dll" />
@@ -160,6 +160,10 @@
 			<LibFiles Include="$(LIBS_MANAGED)/FastSpringBone.dll" />
 			<LibFiles Include="$(LIBS_MANAGED)/FastSpringBone10.dll" />
 			<LibFiles Include="$(LIBS_MANAGED)/SpringBoneJobs.dll" />
+
+			<!-- Unity Extra -->
+			<LibFiles Include="$(LIBS_MANAGED)/Unity.Burst.dll" />
+			<LibFiles Include="$(LIBS_MANAGED)/Unity.Mathematics.dll" />
 
 			<!-- Image Stuff -->
 			<LibFiles Include="$(LIBS_MANAGED)/AsyncImageLoader.Runtime.dll" />
