@@ -2,8 +2,10 @@
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<Version>1.6.0</Version>
+		<Version>1.7.0</Version>
 		<TargetFramework>net471</TargetFramework>
+		<LangVersion>latest</LangVersion>
+		<Nullable>annotations</Nullable>
 		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
 	</PropertyGroup>
 
@@ -71,6 +73,7 @@
 		<Reference Include="UnityEngine.ImageConversionModule" HintPath="$(VALHEIM_MANAGED)/UnityEngine.ImageConversionModule.dll" />
 		-->
 		<Reference Include="UnityEngine.UI" HintPath="$(VALHEIM_MANAGED)/UnityEngine.UI.dll" />
+		<Reference Include="Unity.TextMeshPro" HintPath="$(VALHEIM_MANAGED)/Unity.TextMeshPro.dll" />
 
 		<!-- VRM -->
 		<Reference Include="VRM" HintPath="$(LIBS_MANAGED)/VRM.dll" />

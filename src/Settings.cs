@@ -233,9 +233,15 @@ namespace ValheimVRM
 
             public float ModelBrightness = 0.8f;
             public bool FixCameraHeight = true;
+            public float CameraEyeHeightOffset = 0.0f;
             public bool UseMToonShader = false;
             public bool EnablePlayerFade = true;
             public bool AllowShare = true;
+
+            // Damp the local player's head position writes so the in-game camera
+            // anchor can't oscillate when the camera is pressed against geometry.
+            public bool SmoothCameraHead = true;
+            public float SmoothCameraHeadRate = 30.0f;
 
             public float SpringBoneStiffness = 1.0f;
             public float SpringBoneGravityPower = 1.0f;
@@ -336,6 +342,8 @@ namespace ValheimVRM
             public bool AllowIndividualWinds = true;
             public bool EnableProfileCode = false;
             public int ProfileLogThresholdMs = 20;
+            public bool CameraDebug = false;
+            public bool CameraSmoothing = false;
 
 
             public int CallThreshold = 6;
@@ -407,6 +415,10 @@ namespace ValheimVRM
 
                 Debug.Log("[ValheimVRM] loaded settings for " + playerName + ":\n" + playerSettings[playerName].ToString());
             }
+
+            // .cfg is the source of truth: bind to BepInEx config (if not already bound), migrate
+            // legacy .txt once, then push cfg values into the container.
+            ConfigBindings.BindCharacter(playerName, File.Exists(path) ? path : null);
         }
 
         public static void AddSettingsRaw(string playerName, ICollection<string> settingLines)
@@ -468,6 +480,10 @@ namespace ValheimVRM
             {
                 globalSettings.Reset();
             }
+
+            // .cfg is the source of truth: bind to BepInEx config (if not already bound), migrate
+            // legacy .txt once, then push cfg values into the container.
+            ConfigBindings.BindGlobal();
 
             Debug.Log("[ValheimVRM] loaded global settings:\n" + globalSettings.ToString());
         }

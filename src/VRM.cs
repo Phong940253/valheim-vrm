@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -354,6 +354,8 @@ namespace ValheimVRM
 
 			yield return null;
 
+			if (player == null || vrmModel == null) yield break;
+
 			var originalVisual = player.GetVisual();
 			if (originalVisual != null)
 			{
@@ -365,12 +367,14 @@ namespace ValheimVRM
 				}
 			}
 
+			if (player == null || vrmModel == null) yield break;
 			var orgAnim = AccessTools.FieldRefAccess<Player, Animator>(player, "m_animator");
 			if (orgAnim != null)
 			{
 				orgAnim.keepAnimatorStateOnDisable = true;
 				orgAnim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-				vrmModel.transform.localPosition = orgAnim.transform.localPosition;
+				if (orgAnim.transform != null)
+					vrmModel.transform.localPosition = orgAnim.transform.localPosition;
 			}
 			yield return null;
 
@@ -381,7 +385,7 @@ namespace ValheimVRM
 			}
 			if (orgAnim != null)
 			{
-				animationSync.Setup(orgAnim, settings, false);
+				animationSync.Setup(orgAnim, settings, false, player == Player.m_localPlayer);
 			}
 			yield return null;
 
@@ -389,18 +393,20 @@ namespace ValheimVRM
 
 			if (settings.FixCameraHeight)
 			{
-				var currentAnimator = player != null ? player.GetComponentInChildren<Animator>() : null;
-				if (currentAnimator != null)
+				var vrmAnimator = vrmModel != null ? vrmModel.GetComponentInChildren<Animator>() : null;
+				if (vrmAnimator != null)
 				{
-					var vrmEye = currentAnimator.GetBoneTransform(HumanBodyBones.LeftEye) ??
-								currentAnimator.GetBoneTransform(HumanBodyBones.Head) ??
-								currentAnimator.GetBoneTransform(HumanBodyBones.Neck);
-					if (vrmEye != null && player != null)
+					var vrmEye = vrmAnimator.GetBoneTransform(HumanBodyBones.LeftEye) ??
+								vrmAnimator.GetBoneTransform(HumanBodyBones.Head) ??
+								vrmAnimator.GetBoneTransform(HumanBodyBones.Neck);
+					var playerGO = (player != null) ? player.gameObject : null;
+					if (vrmEye != null && playerGO != null)
 					{
-						var vrmEyePostSync = player.gameObject.GetComponent<VRMEyePositionSync>() ?? player.gameObject.AddComponent<VRMEyePositionSync>();
+						var vrmEyePostSync = playerGO.GetComponent<VRMEyePositionSync>() ?? playerGO.AddComponent<VRMEyePositionSync>();
 						if (vrmEyePostSync != null)
 						{
 							vrmEyePostSync.Setup(vrmEye);
+							vrmEyePostSync.SetHeightOffset(settings.CameraEyeHeightOffset);
 						}
 					}
 				}

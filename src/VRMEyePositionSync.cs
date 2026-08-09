@@ -11,6 +11,7 @@ namespace ValheimVRM
     {
         private Transform vrmEye;
         private Transform orgEye;
+        private float heightOffset;
 
         public void Setup(Transform vrmEye)
         {
@@ -26,15 +27,35 @@ namespace ValheimVRM
             }
         }
 
+        public void SetHeightOffset(float offset)
+        {
+            this.heightOffset = offset;
+        }
+
         void LateUpdate()
         {
-            if (orgEye != null)
+            if (orgEye != null && vrmEye != null)
             {
+                // When interacting with a container (chest/cart/etc.) the vanilla animation
+                // state drops the head bone and the written eye Y would push the camera
+                // below the ground. Keep the vanilla eye height while the chest UI is open.
+                if (InventoryGui.instance != null && InventoryGui.instance.IsContainerOpen())
+                {
+                    return;
+                }
+
                 var pos = this.orgEye.position;
-                pos.y = this.vrmEye.position.y;
+                float eyeY = this.vrmEye.position.y + this.heightOffset;
+
+                // The player root sits at floor level. Never let the camera anchor
+                // dive below the ground.
+                float minY = transform.position.y + 0.25f;
+                if (eyeY < minY) eyeY = minY;
+
+                pos.y = eyeY;
                 this.orgEye.position = pos;
             }
-            else
+            else if (orgEye == null)
             {
                 Debug.LogError("orgEye is null. Make sure Setup method is called and Player component is available.");
             }

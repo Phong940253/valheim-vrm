@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -272,6 +272,13 @@ namespace ValheimVRM
 				Debug.Log($"[VrmTextureCache] 💽 Computed VRM hash for '{playerName}': {vrmHash.GetHaxadecimalString()}");
 			}
 
+			// Player may have been destroyed during the async file-read — guard before calling StartCoroutine.
+			if (player == null || !player.gameObject.activeInHierarchy)
+			{
+				Debug.LogWarning($"[ValheimVRM] Player '{playerName}' was destroyed before VRM import could start, aborting.");
+				yield break;
+			}
+
 			yield return player.StartCoroutine(VRM.ImportVisualAsync(vrmBytes, path, settings.ModelScale, loadedRoot =>
 			{
 				if (loadedRoot != null)
@@ -325,6 +332,7 @@ namespace ValheimVRM
 			{
 				// Don't dispose VRM texture state here. Player may reload the VRM again later.
 
+				Patch_Character_GetHeadPoint.headStates.Remove(__instance);
 				VrmManager.PlayerToName.Remove(__instance);
 				VrmManager.PlayerToVrmInstance.Remove(__instance);
 			}
@@ -533,7 +541,7 @@ namespace ValheimVRM
 						var settings = Settings.GetSettings(VrmManager.PlayerToName[player]);
 						if (settings != null)
 						{
-							sync.Setup(ragAnim, settings, true);
+							sync.Setup(ragAnim, settings, true, player == Player.m_localPlayer);
 						}
 						else
 						{
@@ -599,6 +607,14 @@ namespace ValheimVRM
 	[HarmonyPatch(typeof(Character), "GetHeadPoint")]
 	static class Patch_Character_GetHeadPoint
 	{
+		internal class SmoothedHeadState
+		{
+			public Vector3 Position;
+			public bool HasValue;
+		}
+
+		internal static readonly Dictionary<Player, SmoothedHeadState> headStates = new Dictionary<Player, SmoothedHeadState>();
+
 		[HarmonyPostfix]
 		static bool Prefix(Character __instance, ref Vector3 __result)
 		{
@@ -613,7 +629,38 @@ namespace ValheimVRM
 				var head = animator.GetBoneTransform(HumanBodyBones.Head);
 				if (head == null) return true;
 
-				__result = head.position;
+				// Rate-limit the returned head point: camera / AI pivot logic polls this
+				// every frame, and the animation-sync oscillation was making the camera
+				// shake continuously when it was pressed against geometry.
+				Vector3 rawHeadPos = head.position;
+				if (!headStates.TryGetValue(player, out var state))
+				{
+					state = new SmoothedHeadState();
+					headStates[player] = state;
+				}
+
+				if (!state.HasValue)
+				{
+					state.Position = rawHeadPos;
+					state.HasValue = true;
+				}
+				else
+				{
+					float rate = 30.0f;
+					if (VrmManager.PlayerToName.TryGetValue(player, out var name))
+					{
+						var settings = Settings.GetSettings(name);
+						if (settings != null)
+						{
+							if (!settings.SmoothCameraHead) return true;
+							rate = Mathf.Max(settings.SmoothCameraHeadRate, 0.1f);
+						}
+					}
+					float alpha = 1f - Mathf.Exp(-rate * Time.deltaTime);
+					state.Position = Vector3.Lerp(state.Position, rawHeadPos, alpha);
+				}
+
+				__result = state.Position;
 				return false;
 			}
 
@@ -924,6 +971,13 @@ namespace ValheimVRM
 			{
 				vrmHash = sha256.ComputeHash(vrmBytes);
 				Debug.Log($"[VrmTextureCache] 💽 Computed VRM hash for '{playerName}': {vrmHash.GetHaxadecimalString()}");
+			}
+
+			// Player may have been destroyed during the async file-read — guard before calling StartCoroutine.
+			if (player == null || !player.gameObject.activeInHierarchy)
+			{
+				Debug.LogWarning($"[ValheimVRM] Player '{playerName}' was destroyed before VRM import could start, aborting.");
+				yield break;
 			}
 
 			yield return player.StartCoroutine(VRM.ImportVisualAsync(vrmBytes, path, settings.ModelScale, loadedRoot =>

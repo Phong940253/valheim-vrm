@@ -1,3 +1,17 @@
+## Update 1.7.0
+
+**BepInEx:** 5.4.23.3
+
+**Valheim:** 0.221.12 (n-36)
+
+### Bug Fixes
+
+- **Fixed: Cannot join server (duplicate RPC registration)** — On the second attempt to join a server after disconnecting, `ZRoutedRpc` would throw `ArgumentException: An item with the same key has already been added` because the ServerSync ConfigSync RPC was being registered again on `ZNet.Awake`. The registration is now wrapped in a try/catch to skip duplicates safely.
+
+- **Fixed: `ArgumentNullException` in `LoadVrm` coroutine** — After the async VRM file-read completed, `player.StartCoroutine()` was called on a `Player` MonoBehaviour that had already been destroyed (e.g. due to disconnect). Added null/activeInHierarchy guard before calling `StartCoroutine`.
+
+- **Fixed: `NullReferenceException` in `SetToPlayer` coroutine** — The coroutine yields across multiple frames. If the player is destroyed mid-coroutine, subsequent `player.gameObject` accesses threw `NullReferenceException`. Added null guards after every `yield return null` and made `player.gameObject` access safe via a local variable.
+
 ## Update 1.6.0
 
 **BepInEx:** 5.4.23.3

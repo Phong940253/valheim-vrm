@@ -20,7 +20,7 @@ namespace ValheimVRM
     {
         public const string PluginGuid = "com.yoship1639.plugins.valheimvrm";
         public const string PluginName = "ValheimVRM";
-        public const string PluginVersion = "1.3.11.0";
+        public const string PluginVersion = "1.7.0.0";
 
         private static Harmony _harmony = new Harmony("com.yoship1639.plugins.valheimvrm.patch");
 
@@ -28,6 +28,10 @@ namespace ValheimVRM
         {
             // avoid float parsing error on computers with different cultures
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
+            // Bind settings to BepInEx config (Configuration Manager + server sync) first,
+            // so legacy .txt values get migrated into the .cfg on first load.
+            ConfigBindings.Init(Config);
 
             Settings.ReloadGlobalSettings();
 

@@ -15,13 +15,15 @@ namespace ValheimVRM
 		private HumanPoseHandler orgPose, vrmPose;
 		private HumanPose hp = new HumanPose();
 		private bool ragdoll;
+		private bool isLocalPlayer;
 		private Settings.VrmSettingsContainer settings;
 		private Vector3? adjustPos;
 		private int oldStateHash;
 
-		public void Setup(Animator orgAnim, Settings.VrmSettingsContainer settings, bool isRagdoll = false)
+		public void Setup(Animator orgAnim, Settings.VrmSettingsContainer settings, bool isRagdoll = false, bool localPlayer = false)
 		{
 			this.ragdoll = isRagdoll;
+			this.isLocalPlayer = localPlayer;
 			this.settings = settings;
 			this.orgAnim = orgAnim;
 			this.vrmAnim = GetComponent<Animator>();
@@ -32,6 +34,32 @@ namespace ValheimVRM
 			this.vrmAnim.stabilizeFeet = orgAnim.stabilizeFeet;
 
 			PoseHandlerCreate(orgAnim, vrmAnim);
+		}
+
+		// Writes vrmTrans's position into orgTrans. For the local player the entire
+		// head chain is left to the vanilla Animator: neck/spine/chest are the
+		// head's parent bones, so writing them from the VRM moves the skeleton
+		// head's world position every frame. Doing so raced the vanilla pose and
+		// made the heads oscillate ~8cm at ~30Hz (seen in camera traces), shaking
+		// the camera when pressed against geometry. Arms/legs are still synced so
+		// equipment stays attached to the VRM stance.
+		private void WriteBonePosition(Transform orgTrans, Transform vrmTrans, HumanBodyBones bone)
+		{
+			if (isLocalPlayer && settings.SmoothCameraHead)
+			{
+				switch (bone)
+				{
+					case HumanBodyBones.Spine:
+					case HumanBodyBones.Chest:
+					case HumanBodyBones.UpperChest:
+					case HumanBodyBones.Neck:
+					case HumanBodyBones.Head:
+						return;
+				}
+			}
+
+			Vector3 target = vrmTrans.position + Vector3.up * settings.ModelOffsetY;
+			orgTrans.position = target;
 		}
 
 		void PoseHandlerCreate(Animator org, Animator vrm)
@@ -123,7 +151,7 @@ namespace ValheimVRM
 						}
 						else
 						{
-							orgTrans.position = vrmTrans.position + Vector3.up * settings.ModelOffsetY;
+							WriteBonePosition(orgTrans, vrmTrans, (HumanBodyBones)i);
 						}
 					}
 				}
@@ -239,7 +267,7 @@ namespace ValheimVRM
 						}
 						else
 						{
-							orgTrans.position = vrmTrans.position + Vector3.up * settings.ModelOffsetY;
+							WriteBonePosition(orgTrans, vrmTrans, (HumanBodyBones)i);
 						}
 					}
 				}
