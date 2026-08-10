@@ -352,6 +352,11 @@ namespace ValheimVRM
             public int CallThreshold = 6;
             public int TimeWindowMs = 100;
 
+            // Perf: stop animation/spring-bone/color-sync work for VRM models that are
+            // far away (or off-screen) to avoid FPS drops on crowded servers.
+            public bool DistanceCullingEnabled = true;
+            public float VrmCullingDistance = 35.0f;
+
             public override void OnUpdate(Dictionary<string, object> oldValues)
             {
                 foreach (var oldValue in oldValues)

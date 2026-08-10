@@ -25,12 +25,14 @@ namespace ValheimVRM
 		private int _AmbientColor;
 
 		private List<MatColor> matColors = new List<MatColor>();
+		private float updateTimer;
 
 		void Awake()
 		{
 			//_SunFogColor = Shader.PropertyToID("_SunFogColor");
 			_SunColor = Shader.PropertyToID("_SunColor");
 			_AmbientColor = Shader.PropertyToID("_AmbientColor");
+			updateTimer = 0;
 		}
 
 		public void Setup(GameObject vrm)
@@ -59,6 +61,12 @@ namespace ValheimVRM
 
 		void Update()
 		{
+			// Sun/ambient colors change slowly (weather/time of day); updating every
+			// frame multiplies the per-model cost for nothing. Throttle to ~5 Hz.
+			updateTimer -= Time.deltaTime;
+			if (updateTimer > 0) return;
+			updateTimer = 0.2f;
+
 			//var fog = Shader.GetGlobalColor(_SunFogColor);
 			var sun = Shader.GetGlobalColor(_SunColor);
 			var amb = Shader.GetGlobalColor(_AmbientColor);

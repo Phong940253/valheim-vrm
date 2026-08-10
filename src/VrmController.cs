@@ -78,6 +78,7 @@ namespace ValheimVRM
 		private GameObject playerSizeGizmo;
 
 		private SpringBoneState[] springBones = new SpringBoneState[0];
+		private bool distanceCullingActive;
 		private Vector2 windIntervalRange = new Vector2(0.7f, 1.9f);
 		private float windDirRange = 0.2f;
 		private Vector2 windRiseRange = new Vector2(0.4f, 0.6f);
@@ -134,6 +135,57 @@ namespace ValheimVRM
 				windItems[i] = new WindItem();
 			}
 			windCoverUpdateTimer = 0;
+			distanceCullingActive = false;
+		}
+
+		/// <summary>
+		/// Disables animation sync, spring bones and color sync for VRM models that are
+		/// far away from the local player. Rendering still works (Valheim frustum/LOD
+		/// culls it), but the per-frame CPU/physics work is what tanks FPS on crowded
+		/// servers, so we stop that instead.
+		/// </summary>
+		private void UpdateDistanceCulling()
+		{
+			if (!Settings.globalSettings.DistanceCullingEnabled)
+			{
+				if (distanceCullingActive) SetDistanceCulling(false);
+				return;
+			}
+
+			if (Player.m_localPlayer == null) return;
+
+			float dist = Vector3.Distance(transform.position, Player.m_localPlayer.transform.position);
+			float threshold = Settings.globalSettings.VrmCullingDistance;
+
+			// Hysteresis: only re-enable when well inside the threshold so models at
+			// the boundary don't flicker their physics on/off every frame.
+			if (!distanceCullingActive && dist > threshold)
+			{
+				SetDistanceCulling(true);
+			}
+			else if (distanceCullingActive && dist < threshold - 5.0f)
+			{
+				SetDistanceCulling(false);
+			}
+		}
+
+		private void SetDistanceCulling(bool culled)
+		{
+			distanceCullingActive = culled;
+
+			if (visual != null)
+			{
+				var animSync = visual.GetComponent<VRMAnimationSync>();
+				if (animSync != null) animSync.enabled = !culled;
+
+				var colorSync = visual.GetComponent<MToonColorSync>();
+				if (colorSync != null) colorSync.enabled = !culled;
+			}
+
+			foreach (var bone in springBones)
+			{
+				if (bone.SpringBone != null) bone.SpringBone.enabled = !culled;
+			}
 		}
 
 		public void ResetSpringBonesWind()
@@ -205,6 +257,9 @@ namespace ValheimVRM
 
 		private void FixedUpdate()
 		{
+			UpdateDistanceCulling();
+			if (distanceCullingActive) return;
+
 			if (springBones.Length > 0 && !Settings.globalSettings.ForceWindDisabled)
 			{
 				Vector3 worldWindDir = EnvMan.instance?.GetWindDir() ?? Vector3.back;

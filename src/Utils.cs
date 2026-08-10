@@ -110,6 +110,22 @@ namespace ValheimVRM
 		/// </summary>
 		public static void ApplyMaterialProperties(Material mat, Shader shader, Texture2D tex, Texture2D bumpMap, Color color)
 		{
+			// Fallback texture: models whose materials have no _MainTex would otherwise
+			// render as a flat bright shape and look like they are glowing/emissive.
+			if (tex == null)
+			{
+				tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+				tex.SetPixel(0, 0, new Color(0.9f, 0.9f, 0.9f, 1.0f));
+				tex.Apply();
+			}
+
+			// Clamp skin color so the unlit-ish converted material can't exceed 1.0
+			// and bloom into a "glowing" player model.
+			color.r = Mathf.Min(color.r, 1.0f);
+			color.g = Mathf.Min(color.g, 1.0f);
+			color.b = Mathf.Min(color.b, 1.0f);
+			color.a = 1.0f;
+
 			mat.shader = shader;
 			mat.SetTexture("_MainTex", tex);
 			mat.SetTexture("_SkinBumpMap", bumpMap);
@@ -120,6 +136,20 @@ namespace ValheimVRM
 			mat.SetTexture("_LegsBumpMap", bumpMap);
 			mat.SetFloat("_Glossiness", 0.2f);
 			mat.SetFloat("_MetalGlossiness", 0.0f);
+
+			// MToon/Standard materials often carry emissive colors and keywords from
+			// their original shader. Left as-is they make the whole model glow through
+			// Valheim's bloom post-processing when seen from other players.
+			mat.DisableKeyword("_EMISSION");
+			if (mat.HasProperty("_EmissionColor"))
+			{
+				mat.SetColor("_EmissionColor", Color.black);
+			}
+
+			if (Settings.globalSettings.CameraDebug)
+			{
+				Debug.Log($"[ValheimVRM] 🖌️ Converted material \"{mat.name}\" to {shader.name} | SkinColor {mat.GetColor("_SkinColor")} | MainTex {(tex != null ? tex.name + " " + tex.width + "x" + tex.height : "null")} | Emission disabled");
+			}
 		}
 	}
 }
