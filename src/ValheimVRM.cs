@@ -355,6 +355,10 @@ namespace ValheimVRM
 
 			var settings = Settings.GetSettings(name);
 
+			// Scale position offsets by height so items stay attached on shorter/taller
+			// VRM models instead of floating above the player.
+			float heightAspect = settings != null && settings.ScaleEquipmentPositionsWithHeight ? settings.HeightAspect : 1.0f;
+
 			var hair = __instance.GetField<VisEquipment, GameObject>("m_hairItemInstance");
 			if (hair != null) SetVisible(hair, false);
 
@@ -410,7 +414,7 @@ namespace ValheimVRM
 				else
 				{
 					helmet.transform.localScale = settings.HelmetScale;
-					helmet.transform.localPosition = settings.HelmetOffset;
+					helmet.transform.localPosition = settings.HelmetOffset * heightAspect;
 				}
 			}
 
@@ -421,14 +425,14 @@ namespace ValheimVRM
 			var leftItem = __instance.GetField<VisEquipment, GameObject>("m_leftItemInstance");
 			if (leftItem != null)
 			{
-				leftItem.transform.localPosition = settings.LeftHandItemPos;
+				leftItem.transform.localPosition = settings.LeftHandItemPos * heightAspect;
 				leftItem.transform.localScale = equipmentScaleVector;
 			}
 
 			var rightItem = __instance.GetField<VisEquipment, GameObject>("m_rightItemInstance");
 			if (rightItem != null)
 			{
-				rightItem.transform.localPosition = settings.RightHandItemPos;
+				rightItem.transform.localPosition = settings.RightHandItemPos * heightAspect;
 				rightItem.transform.localScale = equipmentScaleVector;
 			}
 
@@ -458,7 +462,7 @@ namespace ValheimVRM
 					offset = rightBackItem.transform.parent == __instance.m_backTool ? settings.RightHandBackItemToolPos : settings.RightHandBackItemPos;
 				}
 
-				rightBackItem.transform.localPosition = offset / 100.0f;
+				rightBackItem.transform.localPosition = (offset * heightAspect) / 100.0f;
 				rightBackItem.transform.localScale = equipmentScaleVector / 100.0f;
 			}
 
@@ -473,15 +477,15 @@ namespace ValheimVRM
 				var isStaffSkeleton = string.Equals(leftBackNameString, "StaffSkeleton", StringComparison.Ordinal);
 				if (isBow)
 				{
-					leftBackItem.transform.localPosition = settings.BowBackPos / 100.0f;
+					leftBackItem.transform.localPosition = (settings.BowBackPos * heightAspect) / 100.0f;
 				}
 				else if (isStaffSkeleton)
 				{
-					leftBackItem.transform.localPosition = settings.StaffSkeletonPos / 100.0f;
+					leftBackItem.transform.localPosition = (settings.StaffSkeletonPos * heightAspect) / 100.0f;
 				}
 				else
 				{
-					leftBackItem.transform.localPosition = settings.LeftHandBackItemPos / 100.0f;
+					leftBackItem.transform.localPosition = (settings.LeftHandBackItemPos * heightAspect) / 100.0f;
 				}
 				leftBackItem.transform.localScale = equipmentScaleVector / 100.0f;
 			}

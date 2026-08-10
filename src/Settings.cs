@@ -247,6 +247,9 @@ namespace ValheimVRM
             public float SpringBoneGravityPower = 1.0f;
 
             public float EquipmentScale = 1.0f;
+            // Scale equipment position offsets by HeightAspect so items stay attached
+            // on shorter/taller VRM models instead of floating.
+            public bool ScaleEquipmentPositionsWithHeight = true;
             public float AttackDistanceScale = 1.0f;
             public float InteractionDistanceScale = 1.0f;
             public float SwimDepthScale = 1.0f;
