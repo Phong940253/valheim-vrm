@@ -79,6 +79,7 @@ namespace ValheimVRM
 
 		private SpringBoneState[] springBones = new SpringBoneState[0];
 		private bool distanceCullingActive;
+		private Renderer[] visualRenderers = new Renderer[0];
 		private Vector2 windIntervalRange = new Vector2(0.7f, 1.9f);
 		private float windDirRange = 0.2f;
 		private Vector2 windRiseRange = new Vector2(0.4f, 0.6f);
@@ -146,26 +147,33 @@ namespace ValheimVRM
 		/// </summary>
 		private void UpdateDistanceCulling()
 		{
-			if (!Settings.globalSettings.DistanceCullingEnabled)
+			if (Player.m_localPlayer == null) return;
+
+			bool distanceCull = Settings.globalSettings.DistanceCullingEnabled;
+			bool visibilityCull = Settings.globalSettings.InvisibleModelCulling;
+
+			if (!distanceCull && !visibilityCull)
 			{
 				if (distanceCullingActive) SetDistanceCulling(false);
 				return;
 			}
 
-			if (Player.m_localPlayer == null) return;
-
 			float dist = Vector3.Distance(transform.position, Player.m_localPlayer.transform.position);
 			float threshold = Settings.globalSettings.VrmCullingDistance;
 
-			// Hysteresis: only re-enable when well inside the threshold so models at
-			// the boundary don't flicker their physics on/off every frame.
-			if (!distanceCullingActive && dist > threshold)
+			if (distanceCullingActive)
 			{
-				SetDistanceCulling(true);
+				// Stay culled while still far or invisible; re-enable only when
+				// well inside the threshold (hysteresis) and actually visible.
+				bool stillFar = distanceCull && dist > threshold - 5.0f;
+				bool stillInvisible = visibilityCull && !IsModelVisible();
+				if (!stillFar && !stillInvisible) SetDistanceCulling(false);
 			}
-			else if (distanceCullingActive && dist < threshold - 5.0f)
+			else
 			{
-				SetDistanceCulling(false);
+				bool tooFar = distanceCull && dist > threshold;
+				bool invisible = visibilityCull && !IsModelVisible();
+				if (tooFar || invisible) SetDistanceCulling(true);
 			}
 		}
 
@@ -185,6 +193,41 @@ namespace ValheimVRM
 			foreach (var bone in springBones)
 			{
 				if (bone.SpringBone != null) bone.SpringBone.enabled = !culled;
+			}
+		}
+
+		/// <summary>
+		/// True when no renderer of the attached model is visible to any camera.
+		/// In first person the local model sits behind the camera and Valheim
+		/// frustum-culls it, but animation sync and spring bones would otherwise
+		/// keep burning CPU for a model nobody can see.
+		/// </summary>
+		private bool IsModelVisible()
+		{
+			if (visual == null) return true;
+
+			if (visualRenderers.Length == 0 || visualRenderers[0] == null)
+			{
+				visualRenderers = visual.GetComponentsInChildren<Renderer>();
+			}
+
+			foreach (var renderer in visualRenderers)
+			{
+				if (renderer != null && renderer.isVisible) return true;
+			}
+
+			return false;
+		}
+
+		public void RefreshVisualRenderers()
+		{
+			if (visual != null)
+			{
+				visualRenderers = visual.GetComponentsInChildren<Renderer>();
+			}
+			else
+			{
+				visualRenderers = new Renderer[0];
 			}
 		}
 

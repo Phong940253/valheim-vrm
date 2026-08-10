@@ -627,10 +627,10 @@ namespace ValheimVRM
 
 			if (VrmManager.PlayerToVrmInstance.TryGetValue(player, out var vrm))
 			{
+				var animSync = vrm.GetComponent<VRMAnimationSync>();
 				var animator = vrm.GetComponentInChildren<Animator>();
-				if (animator == null) return true;
 
-				var head = animator.GetBoneTransform(HumanBodyBones.Head);
+				var head = animSync != null ? animSync.GetCachedHead() : animator != null ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
 				if (head == null) return true;
 
 				// Rate-limit the returned head point: camera / AI pivot logic polls this

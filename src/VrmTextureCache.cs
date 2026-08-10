@@ -138,6 +138,16 @@ namespace ValheimVRM
 						return (null, default);
 					}
 
+					if (Settings.globalSettings.CompressTextures)
+					{
+						texture = Utils.CompressTexture(texture);
+						if (texture == null)
+						{
+							Debug.LogError($"[VrmTextureCache] 💽 GetOrCacheTexture: Failed to compress texture from {imageData.Length} bytes");
+							return (null, default);
+						}
+					}
+
 					TextureCache[rawKey] = texture;
 					var textureInfo = new TextureInfo(
 						texture.width,

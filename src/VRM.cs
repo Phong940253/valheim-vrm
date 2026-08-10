@@ -325,6 +325,7 @@ namespace ValheimVRM
 			vrmModel.name = "VRM_Visual";
 			vrmModel.SetActive(true);
 			vrmController.visual = vrmModel;
+			vrmController.RefreshVisualRenderers();
 
 			var parent = animator.transform != null ? animator.transform.parent : null;
 			if (parent == null) yield break;

@@ -356,6 +356,13 @@ namespace ValheimVRM
             // far away (or off-screen) to avoid FPS drops on crowded servers.
             public bool DistanceCullingEnabled = true;
             public float VrmCullingDistance = 35.0f;
+            // Also culls models that are off-screen (e.g. the local model behind the
+            // camera in first person, which Valheim frustum-culls but still costs
+            // CPU for animation sync and spring bones).
+            public bool InvisibleModelCulling = true;
+            // Re-encodes VRM textures as mipmapped DXT at load time. Raw RGBA32
+            // textures waste GPU bandwidth and cause FPS drops with models on screen.
+            public bool CompressTextures = true;
 
             public override void OnUpdate(Dictionary<string, object> oldValues)
             {

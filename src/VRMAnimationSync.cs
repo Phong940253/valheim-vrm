@@ -15,10 +15,19 @@ namespace ValheimVRM
 		private HumanPoseHandler orgPose, vrmPose;
 		private HumanPose hp = new HumanPose();
 		private bool ragdoll;
-		private bool isLocalPlayer;
 		private Settings.VrmSettingsContainer settings;
 		private Vector3? adjustPos;
 		private int oldStateHash;
+
+		// Cached bone lookups: Animator.GetBoneTransform is a dictionary lookup that
+		// was being called ~220 times per frame per player. The human bone mapping is
+		// fixed for an avatar, so the results are cached once in Setup().
+		private Transform[] orgBones = new Transform[55];
+		private Transform[] vrmBones = new Transform[55];
+		private bool bonesCached;
+		private int remoteFrameCounter;
+		private bool runThisFrame;
+		private bool isLocalPlayer = true;
 
 		public void Setup(Animator orgAnim, Settings.VrmSettingsContainer settings, bool isRagdoll = false, bool localPlayer = false)
 		{
@@ -34,6 +43,21 @@ namespace ValheimVRM
 			this.vrmAnim.stabilizeFeet = orgAnim.stabilizeFeet;
 
 			PoseHandlerCreate(orgAnim, vrmAnim);
+
+			for (var i = 0; i < 55; i++)
+			{
+				orgBones[i] = orgAnim.GetBoneTransform((HumanBodyBones)i);
+				vrmBones[i] = vrmAnim.GetBoneTransform((HumanBodyBones)i);
+			}
+			bonesCached = true;
+		}
+
+		/// <summary>
+		/// Cached head bone so per-frame GetHeadPoint polls don't redo lookup chains.
+		/// </summary>
+		public Transform GetCachedHead()
+		{
+			return bonesCached ? vrmBones[(int)HumanBodyBones.Head] : vrmAnim != null ? vrmAnim.GetBoneTransform(HumanBodyBones.Head) : null;
 		}
 
 		// Writes vrmTrans's position into orgTrans. For the local player the entire
@@ -135,13 +159,24 @@ namespace ValheimVRM
 		}
 		void Update()
 		{
+			// Remote players get pose sync at ~30 Hz; visually indistinguishable from
+			// 60 Hz but halves the per-frame bone-write work for every other player.
+			runThisFrame = true;
+			if (!isLocalPlayer)
+			{
+				remoteFrameCounter++;
+				if ((remoteFrameCounter & 1) != 0) runThisFrame = false;
+			}
+
+			if (!runThisFrame || !bonesCached) return;
+
 			vrmAnim.transform.localPosition = Vector3.zero;
 			if (!ragdoll)
 			{
 				for (var i = 0; i < 55; i++)
 				{
-					var orgTrans = orgAnim.GetBoneTransform((HumanBodyBones)i);
-					var vrmTrans = vrmAnim.GetBoneTransform((HumanBodyBones)i);
+					var orgTrans = orgBones[i];
+					var vrmTrans = vrmBones[i];
 
 					if (i > 0 && orgTrans != null && vrmTrans != null)
 					{
@@ -162,6 +197,13 @@ namespace ValheimVRM
 
 		void LateUpdate()
 		{
+			if (!runThisFrame)
+			{
+				// LateUpdate can be called without Update (script disabled mid-frame);
+				// keep the previous decision valid, but never repeat the work.
+				return;
+			}
+
 			if (ragdoll)
 			{
 				vrmAnim.transform.localPosition = Vector3.zero;
@@ -169,8 +211,8 @@ namespace ValheimVRM
 
 				for (var i = 0; i < 55; i++)
 				{
-					var orgTrans = orgAnim.GetBoneTransform((HumanBodyBones)i);
-					var vrmTrans = vrmAnim.GetBoneTransform((HumanBodyBones)i);
+					var orgTrans = orgBones[i];
+					var vrmTrans = vrmBones[i];
 					if (orgTrans != null && vrmTrans != null)
 					{
 						vrmTrans.position = orgTrans.position + verticalOffset;
@@ -191,10 +233,12 @@ namespace ValheimVRM
 			var nextState = orgAnim.GetNextAnimatorStateInfo(0);
 			var nextStateHash = nextState.shortNameHash;
 
-			var vrmHip = vrmAnim.GetBoneTransform(HumanBodyBones.Hips);
-			var orgHip = orgAnim.GetBoneTransform(HumanBodyBones.Hips);
+			var vrmHip = vrmBones[(int)HumanBodyBones.Hips];
+			var orgHip = orgBones[(int)HumanBodyBones.Hips];
 
-			vrmHip.position = orgAnim.GetBoneTransform(HumanBodyBones.Hips).position;
+			if (vrmHip == null || orgHip == null) return;
+
+			vrmHip.position = orgHip.position;
 
 			Vector3 actualAdjustHipPos;
 			float actualInterpSpeed;
@@ -256,8 +300,8 @@ namespace ValheimVRM
 			{
 				for (var i = 0; i < 55; i++)
 				{
-					var orgTrans = orgAnim.GetBoneTransform((HumanBodyBones)i);
-					var vrmTrans = vrmAnim.GetBoneTransform((HumanBodyBones)i);
+					var orgTrans = orgBones[i];
+					var vrmTrans = vrmBones[i];
 
 					if (i > 0 && orgTrans != null && vrmTrans != null)
 					{

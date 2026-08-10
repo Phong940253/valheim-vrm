@@ -106,6 +106,64 @@ namespace ValheimVRM
 		}
 
 		/// <summary>
+		/// Compresses a texture to a hardware-friendly format (DXT) with mipmaps.
+		/// Raw RGBA32 VRM textures without mipmaps waste ~4-8x GPU memory bandwidth,
+		/// which causes FPS drops when models of several players are on screen.
+		/// </summary>
+		public static Texture2D CompressTexture(Texture2D texture)
+		{
+			if (texture == null) return null;
+
+			try
+			{
+				switch (texture.format)
+				{
+					case TextureFormat.DXT1:
+					case TextureFormat.DXT5:
+					case TextureFormat.BC7:
+						Debug.Log($"[ValheimVRM] 🗜 Texture already compressed ({texture.format}) -> skip");
+						return texture;
+				}
+
+				if (!texture.isReadable || texture.width <= 1 || texture.height <= 1)
+				{
+					Debug.Log($"[ValheimVRM] 🗜 Texture not compressible ({texture.width}x{texture.height}, readable={texture.isReadable}) -> skip");
+					return texture;
+				}
+
+				// Re-encode into a mutable mipmapped texture so Compress() can
+				// generate the full DXT chain instead of only the base level.
+				var sourceFormat = texture.format;
+
+				bool srgb = false;
+				try
+				{
+					srgb = UnityEngine.Experimental.Rendering.GraphicsFormatUtility.IsSRGBFormat(texture.graphicsFormat);
+				}
+				catch (System.Exception ex)
+				{
+					Debug.LogWarning($"[ValheimVRM] 🗜 Could not query texture color space: {ex.Message}");
+				}
+
+				var readable = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, true, !srgb);
+				readable.SetPixels32(texture.GetPixels32());
+				readable.Apply(true, true);
+
+				readable.Compress(true);
+				readable.Apply(true, true);
+
+				Debug.Log($"[ValheimVRM] 🗜 Compressed {texture.width}x{texture.height} {sourceFormat} -> {readable.format} ({texture.name})");
+				Object.Destroy(texture);
+				return readable;
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogWarning($"[ValheimVRM] 🗜 Texture compression failed: {ex.Message}");
+				return texture;
+			}
+		}
+
+		/// <summary>
 		/// Applies all material properties for Valheim player shader
 		/// </summary>
 		public static void ApplyMaterialProperties(Material mat, Shader shader, Texture2D tex, Texture2D bumpMap, Color color)
