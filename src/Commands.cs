@@ -4,14 +4,14 @@
     {
         public static readonly Console.ConsoleCommand ReloadSettings = new Console.ConsoleCommand(
             "reload_settings",
-            "reload VRM settings for your character (BepInEx config)",
+            "reload VRM settings for your character (from .txt)",
             args =>
             {
                 string name = VrmManager.PlayerToName[Player.m_localPlayer];
 
                 if (!VrmManager.VrmDic.ContainsKey(name)) return;
 
-                ConfigBindings.ReloadCharacter(name);
+                Settings.AddSettingsFromFile(name, VrmManager.VrmDic[name].Source == VRM.SourceType.Shared);
                 VrmManager.VrmDic[name].RecalculateSettingsHash();
 
                 args.Context.AddString("Settings for " + name + " were reloaded");
@@ -22,10 +22,11 @@
 
         public static readonly Console.ConsoleCommand ReloadGlobalSettings = new Console.ConsoleCommand(
             "reload_global_settings",
-            "reload global VRM settings (BepInEx config)",
+            "reload global VRM settings (from BepInEx .cfg)",
             args =>
             {
-                ConfigBindings.ReloadGlobal();
+                MainPlugin.Instance.Config.Reload();
+                Settings.ReloadGlobalSettings();
 
                 args.Context.AddString("Global settings were reloaded");
             }

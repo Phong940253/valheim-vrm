@@ -415,10 +415,6 @@ namespace ValheimVRM
 
                 Debug.Log("[ValheimVRM] loaded settings for " + playerName + ":\n" + playerSettings[playerName].ToString());
             }
-
-            // .cfg is the source of truth: bind to BepInEx config (if not already bound), migrate
-            // legacy .txt once, then push cfg values into the container.
-            ConfigBindings.BindCharacter(playerName, File.Exists(path) ? path : null);
         }
 
         public static void AddSettingsRaw(string playerName, ICollection<string> settingLines)
@@ -480,10 +476,6 @@ namespace ValheimVRM
             {
                 globalSettings.Reset();
             }
-
-            // .cfg is the source of truth: bind to BepInEx config (if not already bound), migrate
-            // legacy .txt once, then push cfg values into the container.
-            ConfigBindings.BindGlobal();
 
             Debug.Log("[ValheimVRM] loaded global settings:\n" + globalSettings.ToString());
         }
