@@ -304,6 +304,50 @@ namespace ValheimVRM
 			playerSizeGizmo.transform.localScale = new Vector3(playerCollider.bounds.size.x, playerCollider.bounds.size.y / 2, playerCollider.bounds.size.z);
 		}
 
+		private Renderer[] nonWeaponRenderers;
+		private int nonWeaponRefresh;
+
+		/// <summary>
+		/// Forces an immediate re-scan of the equipment-hide renderer cache (called
+		/// from the equip-method patches so a freshly equipped backpack disappears
+		/// within one frame instead of waiting for the periodic refresh).
+		/// </summary>
+		internal static void InvalidateEquipmentHide(Player player)
+		{
+			var controller = player != null ? player.GetComponent<VrmController>() : null;
+			if (controller != null)
+			{
+				controller.nonWeaponRenderers = null;
+				controller.nonWeaponRefresh = 0;
+			}
+		}
+
+		private void LateUpdate()
+		{
+			// Continuous re-hide for HideAllEquipment: re-equipping an item can attach
+			// it outside UpdateLodgroup (e.g. the backpack), and LOD updates can
+			// re-enable renderers. Re-scan frequently (every 2 frames) so nothing
+			// vanilla ever flashes back for longer than a frame or two.
+			var settings = playerName != null ? Settings.GetSettings(playerName) : null;
+			if (settings == null || !settings.HideAllEquipment)
+			{
+				nonWeaponRenderers = null;
+				return;
+			}
+
+			if (nonWeaponRenderers == null || ++nonWeaponRefresh > 2)
+			{
+				nonWeaponRefresh = 0;
+				var ve = GetComponent<VisEquipment>();
+				nonWeaponRenderers = ve != null ? Patch_VisEquipment_UpdateLodgroup.GetNonWeaponRenderers(ve, player) : new Renderer[0];
+			}
+
+			foreach (var r in nonWeaponRenderers)
+			{
+				if (r != null && r.enabled) r.enabled = false;
+			}
+		}
+
 		private void FixedUpdate()
 		{
 			UpdateDistanceCulling();

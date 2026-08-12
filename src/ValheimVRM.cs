@@ -383,55 +383,97 @@ namespace ValheimVRM
 
 	[HarmonyPatch(typeof(VisEquipment), "UpdateLodgroup")]
 	static class Patch_VisEquipment_UpdateLodgroup
-	{
-		[HarmonyPostfix]
+	{		[HarmonyPostfix]
 		static void Postfix(VisEquipment __instance)
 		{
 			if (!__instance.m_isPlayer) return;
 			var player = __instance.GetComponent<Player>();
-			if (player == null || !VrmManager.PlayerToVrmInstance.ContainsKey(player)) return;
+			if (player == null) return;
 
-			var name = VrmManager.PlayerToName[player];
-
+			// Per-character settings are registered for every player in Player.Awake,
+			// so this is safe to query even before a VRM instance exists.
+			if (!VrmManager.PlayerToName.TryGetValue(player, out var name)) return;
 			var settings = Settings.GetSettings(name);
+			if (settings == null) return;
 
 			// Scale position offsets by height so items stay attached on shorter/taller
 			// VRM models instead of floating above the player.
-			float heightAspect = settings != null && settings.ScaleEquipmentPositionsWithHeight ? settings.HeightAspect : 1.0f;
+			float heightAspect = settings.ScaleEquipmentPositionsWithHeight ? settings.HeightAspect : 1.0f;
 
-			var hair = __instance.GetField<VisEquipment, GameObject>("m_hairItemInstance");
-			if (hair != null) SetVisible(hair, false);
+			// Back items (backpack / weapon on the back) additionally scale their size
+			// with the model and get a tunable extra position multiplier, because the
+			// vanilla back anchor sits on the default-height skeleton while small VRMs
+			// have a lower spine.
+			float backpackPosMul = settings.AutoScaleBackpack
+				? heightAspect * settings.BackpackPosScale
+				: 1.0f;
+			float backpackSizeMul = settings.AutoScaleBackpack
+				? heightAspect * settings.BackpackSizeScale
+				: 1.0f;
 
-			var beard = __instance.GetField<VisEquipment, GameObject>("m_beardItemInstance");
-			if (beard != null) SetVisible(beard, false);
-
-			var chestList = __instance.GetField<VisEquipment, List<GameObject>>("m_chestItemInstances");
-			if (chestList != null)
+			if (settings.HideAllEquipment)
 			{
-				if (!settings.ChestVisible)
-				{
-					foreach (var chest in chestList) SetVisible(chest, false);
-				}
+				// Nuke every vanilla equipment renderer (armor, backpack, helmet, hair,
+				// cape...) except the weapons, which are positioned below. This also
+				// catches items whose slot the mod does not track, like the backpack.
+				HideNonWeaponEquipment(__instance, player);
 			}
-
-			var legList = __instance.GetField<VisEquipment, List<GameObject>>("m_legItemInstances");
-			if (legList != null)
+			else
 			{
-				if (!settings.LegsVisible)
+				var hair = __instance.GetField<VisEquipment, GameObject>("m_hairItemInstance");
+				if (hair != null) SetVisible(hair, false);
+
+				var beard = __instance.GetField<VisEquipment, GameObject>("m_beardItemInstance");
+				if (beard != null) SetVisible(beard, false);
+
+				var chestList = __instance.GetField<VisEquipment, List<GameObject>>("m_chestItemInstances");
+				if (chestList != null)
 				{
-					foreach (var leg in legList) SetVisible(leg, false);
+					if (!settings.ChestVisible)
+					{
+						foreach (var chest in chestList) SetVisible(chest, false);
+					}
 				}
-			}
+
+				var legList = __instance.GetField<VisEquipment, List<GameObject>>("m_legItemInstances");
+				if (legList != null)
+				{
+					if (!settings.LegsVisible)
+					{
+						foreach (var leg in legList) SetVisible(leg, false);
+					}
+				}
 
 			var shoulderList = __instance.GetField<VisEquipment, List<GameObject>>("m_shoulderItemInstances");
 			if (shoulderList != null)
 			{
-				if (shoulderList != null)
+				var shoulderName = (Utils.GetField<VisEquipment>("m_shoulderItem").GetValue(__instance)?.ToString()) ?? string.Empty;
+				bool isBackpack = shoulderName.IndexOf("Backpack", StringComparison.OrdinalIgnoreCase) >= 0;
+
+				if (isBackpack)
 				{
-					if (!settings.ShouldersVisible)
+					// Backpacks sit on the back in place of a cape. The vanilla cape
+					// anchor follows the default-height skeleton, so on smaller VRMs
+					// the backpack floats above the shoulders. Scale its offset and
+					// size to the model, and always keep it visible (ShouldersVisible
+					// is meant for capes, not the backpack).
+					foreach (var shoulder in shoulderList)
 					{
-						foreach (var shoulder in shoulderList) SetVisible(shoulder, false);
+						if (shoulder == null) continue;
+						SetVisible(shoulder, true);
+						if (settings.AutoScaleBackpack)
+						{
+							var p = shoulder.transform.localPosition;
+							p *= heightAspect;
+							p.y *= settings.BackpackPosScale;
+							shoulder.transform.localPosition = p;
+							shoulder.transform.localScale = Vector3.one * settings.EquipmentScale * heightAspect * settings.BackpackSizeScale;
+						}
 					}
+				}
+				else if (!settings.ShouldersVisible)
+				{
+					foreach (var shoulder in shoulderList) SetVisible(shoulder, false);
 				}
 			}
 
@@ -456,6 +498,7 @@ namespace ValheimVRM
 					helmet.transform.localScale = settings.HelmetScale;
 					helmet.transform.localPosition = settings.HelmetOffset * heightAspect;
 				}
+			}
 			}
 
 			// 武器位置合わせ
@@ -502,8 +545,8 @@ namespace ValheimVRM
 					offset = rightBackItem.transform.parent == __instance.m_backTool ? settings.RightHandBackItemToolPos : settings.RightHandBackItemPos;
 				}
 
-				rightBackItem.transform.localPosition = (offset * heightAspect) / 100.0f;
-				rightBackItem.transform.localScale = equipmentScaleVector / 100.0f;
+				rightBackItem.transform.localPosition = (offset * backpackPosMul) / 100.0f;
+				rightBackItem.transform.localScale = equipmentScaleVector * backpackSizeMul / 100.0f;
 			}
 
 			var leftBackItem = __instance.GetField<VisEquipment, GameObject>("m_leftBackItemInstance");
@@ -517,17 +560,17 @@ namespace ValheimVRM
 				var isStaffSkeleton = string.Equals(leftBackNameString, "StaffSkeleton", StringComparison.Ordinal);
 				if (isBow)
 				{
-					leftBackItem.transform.localPosition = (settings.BowBackPos * heightAspect) / 100.0f;
+					leftBackItem.transform.localPosition = (settings.BowBackPos * backpackPosMul) / 100.0f;
 				}
 				else if (isStaffSkeleton)
 				{
-					leftBackItem.transform.localPosition = (settings.StaffSkeletonPos * heightAspect) / 100.0f;
+					leftBackItem.transform.localPosition = (settings.StaffSkeletonPos * backpackPosMul) / 100.0f;
 				}
 				else
 				{
-					leftBackItem.transform.localPosition = (settings.LeftHandBackItemPos * heightAspect) / 100.0f;
+					leftBackItem.transform.localPosition = (settings.LeftHandBackItemPos * backpackPosMul) / 100.0f;
 				}
-				leftBackItem.transform.localScale = equipmentScaleVector / 100.0f;
+				leftBackItem.transform.localScale = equipmentScaleVector * backpackSizeMul / 100.0f;
 			}
 		}
 
@@ -535,6 +578,104 @@ namespace ValheimVRM
 		{
 			foreach (var mr in obj.GetComponentsInChildren<MeshRenderer>()) mr.enabled = flag;
 			foreach (var smr in obj.GetComponentsInChildren<SkinnedMeshRenderer>()) smr.enabled = flag;
+		}
+
+		/// <summary>
+		/// Collects every renderer on the vanilla player visual model (armor, backpack,
+		/// helmet, hair, cape...) except the hand-held and back weapons, which the mod
+		/// keeps and repositions onto the VRM. Scans from the player root so items
+		/// attached outside the visual model (e.g. the backpack after a re-equip) get
+		/// caught too; the VRM model's own renderers are excluded. Works regardless of
+		/// which VisEquipment slot an item lives in.
+		/// </summary>
+		internal static Renderer[] GetNonWeaponRenderers(VisEquipment ve, Player player)
+		{
+			GameObject vrmRoot = null;
+			if (VrmManager.PlayerToVrmInstance.TryGetValue(player, out var vrmGo) && vrmGo != null)
+			{
+				vrmRoot = vrmGo;
+			}
+
+			var keep = new List<GameObject>();
+			foreach (var field in new[] { "m_leftItemInstance", "m_rightItemInstance", "m_leftBackItemInstance", "m_rightBackItemInstance" })
+			{
+				if (Utils.GetField<VisEquipment>(field).GetValue(ve) is GameObject g && g != null) keep.Add(g);
+			}
+
+			var result = new List<Renderer>();
+			foreach (var r in player.GetComponentsInChildren<Renderer>(true))
+			{
+				if (vrmRoot != null && r.transform.IsChildOf(vrmRoot.transform)) continue;
+
+				bool isWeapon = false;
+				for (var t = r.transform; t != null && t != player.transform; t = t.parent)
+				{
+					if (keep.Contains(t.gameObject))
+					{
+						isWeapon = true;
+						break;
+					}
+				}
+				if (!isWeapon) result.Add(r);
+			}
+
+			return result.ToArray();
+		}
+
+		private static void HideNonWeaponEquipment(VisEquipment __instance, Player player)
+		{
+			foreach (var r in GetNonWeaponRenderers(__instance, player))
+			{
+				r.enabled = false;
+			}
+		}
+	}
+
+	// Re-equipping an item can attach it outside UpdateLodgroup (e.g. the backpack),
+	// so the equipment-hide cache in VrmController would only catch it on the next
+	// periodic refresh. Invalidate the cache immediately on every equip path so the
+	// new instance is hidden within one frame.
+	[HarmonyPatch(typeof(VisEquipment), "SetItem")]
+	static class Patch_VisEquipment_SetItem
+	{
+		[HarmonyPostfix]
+		static void Postfix(VisEquipment __instance)
+		{
+			if (!__instance.m_isPlayer) return;
+			VrmController.InvalidateEquipmentHide(__instance.GetComponent<Player>());
+		}
+	}
+
+	[HarmonyPatch(typeof(VisEquipment), "SetShoulderItem")]
+	static class Patch_VisEquipment_SetShoulderItem
+	{
+		[HarmonyPostfix]
+		static void Postfix(VisEquipment __instance)
+		{
+			if (!__instance.m_isPlayer) return;
+			VrmController.InvalidateEquipmentHide(__instance.GetComponent<Player>());
+		}
+	}
+
+	[HarmonyPatch(typeof(VisEquipment), "SetBackEquipped")]
+	static class Patch_VisEquipment_SetBackEquipped
+	{
+		[HarmonyPostfix]
+		static void Postfix(VisEquipment __instance)
+		{
+			if (!__instance.m_isPlayer) return;
+			VrmController.InvalidateEquipmentHide(__instance.GetComponent<Player>());
+		}
+	}
+
+	[HarmonyPatch(typeof(VisEquipment), "SetUtilityItem")]
+	static class Patch_VisEquipment_SetUtilityItem
+	{
+		[HarmonyPostfix]
+		static void Postfix(VisEquipment __instance)
+		{
+			if (!__instance.m_isPlayer) return;
+			VrmController.InvalidateEquipmentHide(__instance.GetComponent<Player>());
 		}
 	}
 

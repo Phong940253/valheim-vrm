@@ -230,6 +230,11 @@ namespace ValheimVRM
             public bool ShouldersVisible = false;
             public bool UtilityVisible = false;
             public bool LegsVisible = false;
+            // Hides ALL vanilla equipment on the player's visual model (armor,
+            // backpack, helmet, hair, cape...) except hand-held and back weapons,
+            // which stay visible and attached to the VRM. Use this to avoid display
+            // errors when vanilla equipment does not line up with the VRM model.
+            public bool HideAllEquipment = false;
 
             public float ModelBrightness = 0.8f;
             public bool FixCameraHeight = true;
@@ -250,6 +255,16 @@ namespace ValheimVRM
             // Scale equipment position offsets by HeightAspect so items stay attached
             // on shorter/taller VRM models instead of floating.
             public bool ScaleEquipmentPositionsWithHeight = true;
+            // Auto scale back items (backpack/weapon on the back): both position and
+            // size follow HeightAspect so they sit on the VRM's back instead of
+            // floating above it. Hand-held items keep the game's own size.
+            public bool AutoScaleBackpack = true;
+            // Extra position multiplier for back items on top of HeightAspect. Default
+            // slightly smaller for small VRMs (~1.5m) whose spine sits lower than the
+            // vanilla skeleton's back anchor.
+            public float BackpackPosScale = 0.85f;
+            // Extra size multiplier for back items on top of HeightAspect.
+            public float BackpackSizeScale = 1.0f;
             public float AttackDistanceScale = 1.0f;
             public float InteractionDistanceScale = 1.0f;
             public float SwimDepthScale = 1.0f;
