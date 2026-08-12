@@ -204,6 +204,11 @@ namespace ValheimVRM
 				return;
 			}
 
+			// Setup may be skipped (orgAnim null in SetToPlayer) or fail partway;
+			// without the cached bones and pose handlers every dereference below
+			// would throw a NullReferenceException each frame.
+			if (!bonesCached || orgPose == null || vrmPose == null || settings == null || vrmAnim == null) return;
+
 			if (ragdoll)
 			{
 				vrmAnim.transform.localPosition = Vector3.zero;

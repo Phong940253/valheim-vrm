@@ -114,6 +114,7 @@ namespace ValheimVRM
 		{
 			if (texture == null) return null;
 
+			Texture2D readable = null;
 			try
 			{
 				switch (texture.format)
@@ -145,11 +146,16 @@ namespace ValheimVRM
 					Debug.LogWarning($"[ValheimVRM] 🗜 Could not query texture color space: {ex.Message}");
 				}
 
-				var readable = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, true, !srgb);
+				readable = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, true, !srgb);
 				readable.SetPixels32(texture.GetPixels32());
-				readable.Apply(true, true);
+				// IMPORTANT: apply with makeNoLongerReadable=FALSE - Compress() requires
+				// the texture to stay readable, otherwise it throws and the whole
+				// feature silently degrades to uncompressed RGBA32.
+				readable.Apply(true, false);
 
 				readable.Compress(true);
+				// Final upload; make non-readable so the GPU-only compressed data can't
+				// be read back and no CPU buffer is retained.
 				readable.Apply(true, true);
 
 				Debug.Log($"[ValheimVRM] 🗜 Compressed {texture.width}x{texture.height} {sourceFormat} -> {readable.format} ({texture.name})");
@@ -159,6 +165,7 @@ namespace ValheimVRM
 			catch (System.Exception ex)
 			{
 				Debug.LogWarning($"[ValheimVRM] 🗜 Texture compression failed: {ex.Message}");
+				if (readable != null) Object.Destroy(readable);
 				return texture;
 			}
 		}

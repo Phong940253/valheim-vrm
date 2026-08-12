@@ -32,6 +32,15 @@ namespace ValheimVRM
             this.heightOffset = offset;
         }
 
+        /// <summary>
+        /// The cached VRM eye/head/neck bone this component follows. Used as a
+        /// cheaper fallback than Animator.GetBoneTransform in hot camera polls.
+        /// </summary>
+        public Transform GetEyeBone()
+        {
+            return vrmEye;
+        }
+
         void LateUpdate()
         {
             // Stale components (left over from a disconnect, or attached to a dead

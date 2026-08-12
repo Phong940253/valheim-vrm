@@ -659,7 +659,7 @@ namespace ValheimVRM
 
 		internal static readonly Dictionary<Player, SmoothedHeadState> headStates = new Dictionary<Player, SmoothedHeadState>();
 
-		[HarmonyPostfix]
+		[HarmonyPrefix]
 		static bool Prefix(Character __instance, ref Vector3 __result)
 		{
 			var player = __instance as Player;
@@ -670,7 +670,14 @@ namespace ValheimVRM
 				var animSync = vrm.GetComponent<VRMAnimationSync>();
 				var animator = vrm.GetComponentInChildren<Animator>();
 
-				var head = animSync != null ? animSync.GetCachedHead() : animator != null ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+				// Prefer the cached bone (either from animation sync or the eye sync
+				// component) before falling back to a raw Animator lookup, which is
+				// polled multiple times per frame by camera/AI code.
+				var eyeSync = player != null ? player.GetComponent<VRMEyePositionSync>() : null;
+				var head = animSync != null ? animSync.GetCachedHead()
+					: eyeSync != null ? eyeSync.GetEyeBone()
+					: animator != null ? animator.GetBoneTransform(HumanBodyBones.Head)
+					: null;
 				if (head == null) return true;
 
 				// Rate-limit the returned head point: camera / AI pivot logic polls this

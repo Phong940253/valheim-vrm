@@ -58,17 +58,15 @@ namespace ValheimVRM
 
                     var sb = new StringBuilder();
 
-                    var controller = player.GetComponent<VrmController>();
                     var animSync = visual.GetComponent<VRMAnimationSync>();
 
-                    bool animEnabled = animSync != null && animSync.enabled;
                     bool isLocal = player == Player.m_localPlayer;
 
                     float dist = Player.m_localPlayer != null
                         ? Vector3.Distance(player.transform.position, Player.m_localPlayer.transform.position)
                         : 0.0f;
 
-                    sb.Append(VrmManager.PlayerToName.TryGetValue(player, out var pname) ? pname : player.name);
+                    sb.Append(VrmManager.PlayerToName.TryGetValue(player, out var pname) ? (pname ?? player.name) : player.name);
                     sb.Append(isLocal ? " [LOCAL]" : " [REMOTE]");
                     sb.Append($" | dist={dist.ToString("0.0")}m");
                     sb.Append(animSync != null && animSync.enabled ? " | anim=ON" : " | anim=OFF");

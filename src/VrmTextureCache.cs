@@ -83,8 +83,39 @@ namespace ValheimVRM
 
 			public override string ToString()
 			{
-				return $"({Width}x{Height}, {Format}, {ColorSpace}, {DataSize} bytes)";
+				return $"({Width}x{Height}, {Format}, {ColorSpace}, {DataSize} bytes GPU)";
 			}
+		}
+
+		/// <summary>
+		/// Rough GPU memory estimate (base level + mip chain) for a texture of the
+		/// given format. Used for logging so the cache reports the real in-memory
+		/// size instead of the encoded PNG/JPEG byte length.
+		/// </summary>
+		public static int GetGpuSizeBytes(int width, int height, TextureFormat format)
+		{
+			float bytesPerPixel;
+			switch (format)
+			{
+				case TextureFormat.DXT1:
+					bytesPerPixel = 0.5f;
+					break;
+				case TextureFormat.DXT5:
+				case TextureFormat.BC7:
+					bytesPerPixel = 1.0f;
+					break;
+				case TextureFormat.BC4:
+				case TextureFormat.BC5:
+				case TextureFormat.ARGB4444:
+					bytesPerPixel = 2.0f;
+					break;
+				default:
+					bytesPerPixel = 4.0f;
+					break;
+			}
+
+			// Full mip chain is ~1.33x the base level size.
+			return (int)(width * height * bytesPerPixel * 1.333f);
 		}
 
 		public class VrmState
@@ -154,7 +185,7 @@ namespace ValheimVRM
 						texture.height,
 						texture.format,
 						linear ? "linear" : "srgb",
-						imageData.Length
+						GetGpuSizeBytes(texture.width, texture.height, texture.format)
 					);
 					TextureInfoCache[rawKey] = textureInfo;
 					Debug.Log($"[VrmTextureCache] 💽 Cache MISS - {textureInfo}");
