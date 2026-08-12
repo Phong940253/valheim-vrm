@@ -101,6 +101,46 @@ namespace ValheimVRM
 		public static Dictionary<string, VRM> VrmDic = new Dictionary<string, VRM>();
 		public static Dictionary<string, byte[]> VrmHashes = new Dictionary<string, byte[]>(); // Store VRM hashes for lifecycle
 
+		/// <summary>
+		/// Tears down all in-scene VRM instances and cached player references. Called
+		/// when the main menu is entered (app start, or after a disconnect/server crash
+		/// without a game restart). Without this, the disconnected player's leftover
+		/// VRM_Visual and stale bone references survive and later feed destroyed
+		/// transforms into VRMEyePositionSync, dragging the camera below the ground on
+		/// UI/interaction transitions. The VRM prefabs in VrmDic are kept (DontDestroyOnLoad)
+		/// and re-instantiated on the next spawn.
+		/// </summary>
+		public static void OnLocalDisconnect(Player currentPlayer = null)
+		{
+			try
+			{
+				foreach (var vrmModel in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+				{
+					if (vrmModel != null && vrmModel.name == "VRM_Visual")
+					{
+						UnityEngine.Object.Destroy(vrmModel.gameObject);
+					}
+				}
+
+				Patch_Character_GetHeadPoint.headStates.Clear();
+				PlayerToVrmInstance.Clear();
+
+				// Keep the menu player's own name mapping (just re-registered in
+				// Patch_Player_Awake); drop every other stale player entry.
+				var keys = new List<Player>(PlayerToName.Keys);
+				foreach (var key in keys)
+				{
+					if (key != currentPlayer) PlayerToName.Remove(key);
+				}
+
+				Debug.Log("[ValheimVRM] OnLocalDisconnect: cleared stale VRM instances and player references");
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogWarning($"[ValheimVRM] OnLocalDisconnect failed: {ex.Message}");
+			}
+		}
+
 		public static VRM RegisterVrm(VRM vrm, LODGroup sampleLODGroup, Player player, byte[] vrmHash)
 		{
 			if (vrm.VisualModel == null) return null;
@@ -822,6 +862,12 @@ namespace ValheimVRM
 						Settings.RemoveSettings(name);
 					}
 				}
+
+				// After a disconnect (server crash, network loss) the player object is
+				// destroyed but leftover VRM_Visual instances / cached references can
+				// survive and later feed stale bone transforms to VRMEyePositionSync,
+				// dragging the camera below the ground on UI/interact transitions.
+				VrmManager.OnLocalDisconnect(__instance);
 
 				VrmController.CleanupLoadings();
 			}

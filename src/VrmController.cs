@@ -190,6 +190,12 @@ namespace ValheimVRM
 				if (colorSync != null) colorSync.enabled = !culled;
 			}
 
+			// Freeze eye-height sync too: while the model is culled its bones are not
+			// updated, so VRMEyePositionSync would keep writing a stale head Y to the
+			// camera eye and could drag it below the ground.
+			var eyeSync = GetComponent<VRMEyePositionSync>();
+			if (eyeSync != null) eyeSync.enabled = !culled;
+
 			foreach (var bone in springBones)
 			{
 				if (bone.SpringBone != null) bone.SpringBone.enabled = !culled;

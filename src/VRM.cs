@@ -408,6 +408,10 @@ namespace ValheimVRM
 						{
 							vrmEyePostSync.Setup(vrmEye);
 							vrmEyePostSync.SetHeightOffset(settings.CameraEyeHeightOffset);
+							// A reused component may have been left disabled by distance
+							// culling from a previous session - re-enable it now that the
+							// fresh eye bone is attached.
+							vrmEyePostSync.enabled = true;
 						}
 					}
 				}

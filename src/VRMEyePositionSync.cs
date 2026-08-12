@@ -34,31 +34,36 @@ namespace ValheimVRM
 
         void LateUpdate()
         {
-            if (orgEye != null && vrmEye != null)
+            // Stale components (left over from a disconnect, or attached to a dead
+            // player object) must never write the eye height - a destroyed vrmEye
+            // reads as (0,0,0) and would drag the camera below the ground.
+            if (vrmEye == null || orgEye == null) return;
+            if (Player.m_localPlayer == null) return;
+            if (!isActiveAndEnabled) return;
+            var owningPlayer = GetComponent<Player>();
+            if (owningPlayer == null || owningPlayer.gameObject == null || !owningPlayer.gameObject.activeInHierarchy) return;
+
+            // While any inventory UI is open the vanilla animation state drops the
+            // head bone; writing the VRM eye height would push the camera below the
+            // ground. Keep the vanilla eye height during those states.
+            if (InventoryGui.instance != null)
             {
-                // When interacting with a container (chest/cart/etc.) the vanilla animation
-                // state drops the head bone and the written eye Y would push the camera
-                // below the ground. Keep the vanilla eye height while the chest UI is open.
-                if (InventoryGui.instance != null && InventoryGui.instance.IsContainerOpen())
-                {
-                    return;
-                }
-
-                var pos = this.orgEye.position;
-                float eyeY = this.vrmEye.position.y + this.heightOffset;
-
-                // The player root sits at floor level. Never let the camera anchor
-                // dive below the ground.
-                float minY = transform.position.y + 0.25f;
-                if (eyeY < minY) eyeY = minY;
-
-                pos.y = eyeY;
-                this.orgEye.position = pos;
+                bool uiOpen = false;
+                try { uiOpen = InventoryGui.IsVisible(); }
+                catch (Exception) { uiOpen = false; }
+                if (uiOpen) return;
             }
-            else if (orgEye == null)
-            {
-                Debug.LogError("orgEye is null. Make sure Setup method is called and Player component is available.");
-            }
+
+            var pos = this.orgEye.position;
+            float eyeY = this.vrmEye.position.y + this.heightOffset;
+
+            // The player root sits at floor level. Never let the camera anchor
+            // dive below the ground.
+            float minY = transform.position.y + 0.25f;
+            if (eyeY < minY) eyeY = minY;
+
+            pos.y = eyeY;
+            this.orgEye.position = pos;
         }
     }
 }
