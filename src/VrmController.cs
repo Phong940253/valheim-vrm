@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -305,7 +305,18 @@ namespace ValheimVRM
 		}
 
 		private Renderer[] nonWeaponRenderers;
+		private List<KeyValuePair<Transform, Vector3>> vfxChildren;
+		private List<ExternalVfxRootState> externalVfxRoots;
 		private int nonWeaponRefresh;
+		private int vfxPositionsRefresh;
+		private Settings.VrmSettingsContainer cachedSettings;
+
+		private class ExternalVfxRootState
+		{
+			public Transform Root;
+			public float RootY0;   // root.localPosition.y captured once, before any modification
+			public float Total0;   // topmost renderer offset above the player root, captured once
+		}
 
 		/// <summary>
 		/// Forces an immediate re-scan of the equipment-hide renderer cache (called
@@ -318,7 +329,14 @@ namespace ValheimVRM
 			if (controller != null)
 			{
 				controller.nonWeaponRenderers = null;
+				controller.vfxChildren = null;
 				controller.nonWeaponRefresh = 0;
+				// Force the VFX-root refresh on the next frame so freshly equipped
+				// effects (wings etc.) are captured and corrected immediately. The
+				// externalVfxRoots list itself is NOT reset: each root is captured
+				// once per instance, so resetting it here would re-capture from the
+				// already-corrected positions and drift the correction down.
+				controller.vfxPositionsRefresh = 100;
 			}
 		}
 
@@ -328,10 +346,16 @@ namespace ValheimVRM
 			// it outside UpdateLodgroup (e.g. the backpack), and LOD updates can
 			// re-enable renderers. Re-scan frequently (every 2 frames) so nothing
 			// vanilla ever flashes back for longer than a frame or two.
-			var settings = playerName != null ? Settings.GetSettings(playerName) : null;
+			if (cachedSettings == null)
+			{
+				cachedSettings = playerName != null ? Settings.GetSettings(playerName) : null;
+			}
+			var settings = cachedSettings;
 			if (settings == null || !settings.HideAllEquipment)
 			{
 				nonWeaponRenderers = null;
+				vfxChildren = null;
+				externalVfxRoots = null;
 				return;
 			}
 
@@ -340,13 +364,140 @@ namespace ValheimVRM
 				nonWeaponRefresh = 0;
 				var ve = GetComponent<VisEquipment>();
 				nonWeaponRenderers = ve != null ? Patch_VisEquipment_UpdateLodgroup.GetNonWeaponRenderers(ve, player) : new Renderer[0];
+				vfxChildren = ve != null ? Patch_VisEquipment_UpdateLodgroup.GetVfxChildren(ve, player) : new List<KeyValuePair<Transform, Vector3>>();
 			}
 
 			foreach (var r in nonWeaponRenderers)
 			{
 				if (r != null && r.enabled) r.enabled = false;
 			}
+
+			// Other mods' effects (Jewelcrafting wings/glows) are parented onto the
+			// hidden vanilla equipment, which sits at default skeleton height. Scale
+			// their offsets down with the model so they sit on the VRM's back.
+			if (settings.ScaleVfxWithHeight)
+			{
+				float aspect = settings.HeightAspect;
+				if (Mathf.Abs(aspect - 1.0f) > 0.001f)
+				{
+					// VFX roots change rarely, so re-scan them far less often than the
+					// renderer hide (10 frames instead of 2).
+					if (externalVfxRoots == null || ++vfxPositionsRefresh > 10)
+					{
+						vfxPositionsRefresh = 0;
+						RefreshExternalVfxRoots();
+					}
+
+					foreach (var pair in vfxChildren)
+					{
+						if (pair.Key != null)
+						{
+							pair.Key.localPosition = pair.Value * aspect;
+						}
+					}
+
+					// Effects parented directly onto the player root (JC_DarkWings etc.)
+					// carry their height in baked child offsets. Shift ONLY the effect
+					// root so the whole assembly sits at aspect * its height. Each root
+					// is captured once when first seen (the equip patches force an
+					// immediate refresh, so new effects are corrected within a frame)
+					// and the shift is an additive constant - it can never drift.
+					if (externalVfxRoots != null)
+					{
+						float vfxScale = settings.VfxPosScale;
+						foreach (var s in externalVfxRoots)
+						{
+							if (s == null || s.Root == null) continue;
+
+							var p = s.Root.localPosition;
+							p.y = s.RootY0 + s.Total0 * (aspect - 1.0f) * vfxScale;
+							s.Root.localPosition = p;
+						}
+					}
+				}
+				else
+				{
+					// Default-height model: nothing to scale, drop the cached scans so
+					// they re-scan fresh if the height changes later.
+					externalVfxRoots = null;
+					vfxPositionsRefresh = 0;
+				}
+			}
 		}
+
+		/// <summary>
+		/// (Re)builds the cache of external VFX roots (direct children of the player
+		/// root, e.g. JC_DarkWings). Captures the baked height originals only after
+		/// the root has been seen twice (settled after the attach), so the additive
+		/// correction applied every frame never drifts or races with the attach.
+		/// </summary>
+		private void RefreshExternalVfxRoots()
+		{
+			if (externalVfxRoots == null)
+			{
+				externalVfxRoots = new List<ExternalVfxRootState>();
+			}
+
+			// Drop entries whose root was destroyed (re-equip / re-attach).
+			externalVfxRoots.RemoveAll(s => s == null || s.Root == null);
+
+			var foundRoots = Patch_VisEquipment_UpdateLodgroup.GetExternalVfxRoots(player);
+
+			foreach (var root in foundRoots)
+			{
+				if (root == null) continue;
+
+				var state = externalVfxRoots.Find(s => s != null && s.Root == root);
+				if (state != null)
+				{
+					// If the first capture found nothing (e.g. a particle effect whose
+					// renderers were not queryable yet), retry - the root has not been
+					// moved yet (correction was 0), so live values are still the baked
+					// ones and re-capturing is safe and drift-free.
+					if (state.Total0 == 0f) CaptureVfxRoot(state, root);
+					continue;
+				}
+
+				// First sight: capture the baked values immediately so the correction
+				// applies right away. Each root is captured exactly once per instance
+				// (re-created roots get a fresh capture), so the additive correction
+				// never drifts.
+				state = new ExternalVfxRootState { Root = root };
+				CaptureVfxRoot(state, root);
+				externalVfxRoots.Add(state);
+			}
+		}
+
+		/// <summary>
+		/// Captures the effect root's baked placement. The height reference uses the
+		/// renderer TRANSFORM position (deterministic baked prefab placement) instead
+		/// of renderer.bounds.center, which is unreliable for particle systems that
+		/// have not emitted yet or have expanded bounds.
+		/// </summary>
+		private void CaptureVfxRoot(ExternalVfxRootState state, Transform root)
+		{
+			if (player == null || state == null || root == null) return;
+
+			state.RootY0 = root.localPosition.y;
+
+			float topY = 0f;
+			bool hasTop = false;
+			foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+			{
+				if (r == null) continue;
+				float y = r.transform.position.y;
+				if (!hasTop || y > topY)
+				{
+					topY = y;
+					hasTop = true;
+				}
+			}
+			if (hasTop)
+			{
+				state.Total0 = topY - player.transform.position.y;
+			}
+		}
+
 
 		private void FixedUpdate()
 		{

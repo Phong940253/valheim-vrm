@@ -235,6 +235,16 @@ namespace ValheimVRM
             // which stay visible and attached to the VRM. Use this to avoid display
             // errors when vanilla equipment does not line up with the VRM model.
             public bool HideAllEquipment = false;
+            // Scales the local position of VFX-style children attached to the hidden
+            // vanilla equipment (e.g. Jewelcrafting gem effects / glider wings) by
+            // HeightAspect so they sit correctly on shorter/taller VRM models.
+            // Only applied while HideAllEquipment is enabled.
+            public bool ScaleVfxWithHeight = true;
+            // Extra multiplier for the VFX height correction (VFX effects are baked
+            // near the neck line of the default character, so proportional scaling
+            // still leaves them at head height on small models). Values above 1 push
+            // the effects further down toward the back; use reload_settings to tune.
+            public float VfxPosScale = 1.0f;
 
             public float ModelBrightness = 0.8f;
             public bool FixCameraHeight = true;

@@ -583,13 +583,16 @@ namespace ValheimVRM
 		/// <summary>
 		/// Collects every renderer on the vanilla player visual model (armor, backpack,
 		/// helmet, hair, cape...) except the hand-held and back weapons, which the mod
-		/// keeps and repositions onto the VRM. Scans from the player root so items
-		/// attached outside the visual model (e.g. the backpack after a re-equip) get
-		/// caught too; the VRM model's own renderers are excluded. Works regardless of
-		/// which VisEquipment slot an item lives in.
+		/// keeps and repositions onto the VRM. Scans only the vanilla visual model so
+		/// renderers attached elsewhere on the player by other mods (VFX particles,
+		/// wing meshes, ...) are never touched. VFX-style renderers are skipped too.
+		/// Works regardless of which VisEquipment slot an item lives in.
 		/// </summary>
 		internal static Renderer[] GetNonWeaponRenderers(VisEquipment ve, Player player)
 		{
+			var visual = player.GetVisual();
+			if (visual == null) return new Renderer[0];
+
 			GameObject vrmRoot = null;
 			if (VrmManager.PlayerToVrmInstance.TryGetValue(player, out var vrmGo) && vrmGo != null)
 			{
@@ -603,12 +606,18 @@ namespace ValheimVRM
 			}
 
 			var result = new List<Renderer>();
-			foreach (var r in player.GetComponentsInChildren<Renderer>(true))
+			foreach (var r in visual.GetComponentsInChildren<Renderer>(true))
 			{
 				if (vrmRoot != null && r.transform.IsChildOf(vrmRoot.transform)) continue;
 
+				// Never touch VFX-style renderers - they belong to other mods'
+				// effects (particles, trails, laser lines, wings driven by a
+				// particle system), not to vanilla equipment.
+				if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer) continue;
+				if (r.GetComponentInParent<ParticleSystem>() != null) continue;
+
 				bool isWeapon = false;
-				for (var t = r.transform; t != null && t != player.transform; t = t.parent)
+				for (var t = r.transform; t != null && t != visual.transform; t = t.parent)
 				{
 					if (keep.Contains(t.gameObject))
 					{
@@ -620,6 +629,148 @@ namespace ValheimVRM
 			}
 
 			return result.ToArray();
+		}
+
+		/// <summary>
+		/// Collects the direct children of the non-weapon equipment instances that
+		/// carry VFX-style renderers (particles, trails, wings driven by a particle
+		/// system). Other mods (e.g. Jewelcrafting) parent their effects onto the
+		/// vanilla equipment GameObjects, which sit at the default-height skeleton -
+		/// so on shorter/taller VRM models the effects float. Returning the original
+		/// localPosition lets the controller re-scale it by HeightAspect each frame.
+		/// </summary>
+		internal static List<KeyValuePair<Transform, Vector3>> GetVfxChildren(VisEquipment ve, Player player)
+		{
+			var result = new List<KeyValuePair<Transform, Vector3>>();
+
+			foreach (var obj in EnumerateNonWeaponInstances(ve))
+			{
+				if (obj == null) continue;
+
+				foreach (Transform child in obj.transform)
+				{
+					if (child == null) continue;
+					if (child.GetComponentInChildren<ParticleSystem>() != null)
+					{
+						result.Add(new KeyValuePair<Transform, Vector3>(child, child.localPosition));
+						continue;
+					}
+
+					bool hasVfx = false;
+					foreach (var r in child.GetComponentsInChildren<Renderer>(true))
+					{
+						if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer)
+						{
+							hasVfx = true;
+							break;
+						}
+					}
+					if (hasVfx) result.Add(new KeyValuePair<Transform, Vector3>(child, child.localPosition));
+				}
+			}
+
+			return result;
+		}
+
+		/// <summary>
+		/// Collects third-party effect roots that are parented directly onto the
+		/// player root (e.g. Jewelcrafting's JC_DarkWings / JC_Electric_Wings / buff
+		/// effects). Their height is baked into child offsets inside the prefab, so
+		/// the controller repositions the whole effect for shorter/taller VRM models.
+		/// Vanilla children (Visual, vfx_Wet, the VRM model) are excluded; a child is
+		/// treated as an effect when its name matches known effect markers OR it
+		/// carries VFX-style renderers (particles/trails), so oddly-named effects are
+		/// still caught.
+		/// </summary>
+		internal static List<Transform> GetExternalVfxRoots(Player player)
+		{
+			var result = new List<Transform>();
+			if (player == null) return result;
+
+			GameObject vrmRoot = null;
+			if (VrmManager.PlayerToVrmInstance.TryGetValue(player, out var vrmGo) && vrmGo != null)
+			{
+				vrmRoot = vrmGo;
+			}
+
+			foreach (Transform child in player.transform)
+			{
+				if (child == null) continue;
+
+				var name = child.name;
+				if (name.StartsWith("vfx_", StringComparison.OrdinalIgnoreCase)) continue;
+				if (string.Equals(name, "Visual", StringComparison.OrdinalIgnoreCase)) continue;
+				if (vrmRoot != null && child == vrmRoot.transform) continue;
+				if (string.Equals(name, "VRM_Visual", StringComparison.OrdinalIgnoreCase)) continue;
+
+				bool isExternal = name.StartsWith("JC_", StringComparison.OrdinalIgnoreCase)
+					|| name.IndexOf("wing", StringComparison.OrdinalIgnoreCase) >= 0
+					|| name.IndexOf("glider", StringComparison.OrdinalIgnoreCase) >= 0
+					|| name.IndexOf("aura", StringComparison.OrdinalIgnoreCase) >= 0
+					|| name.IndexOf("glow", StringComparison.OrdinalIgnoreCase) >= 0;
+
+				if (!isExternal)
+				{
+					// Content-based fallback: a player-root child with particle-style
+					// renderers is very likely a mod effect even if its name is generic.
+					bool hasVfxContent = false;
+					if (child.GetComponentInChildren<ParticleSystem>(true) != null)
+					{
+						hasVfxContent = true;
+					}
+					else
+					{
+						foreach (var r in child.GetComponentsInChildren<Renderer>(true))
+						{
+							if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer)
+							{
+								hasVfxContent = true;
+								break;
+							}
+						}
+					}
+					if (!hasVfxContent) continue;
+				}
+				else if (child.GetComponentInChildren<Renderer>(true) == null &&
+					child.GetComponentInChildren<ParticleSystem>(true) == null)
+				{
+					// Name-matched but carries nothing renderable.
+					continue;
+				}
+
+				result.Add(child);
+			}
+
+			return result;
+		}
+
+		/// <summary>
+		/// All VisEquipment instance GameObjects except the four weapon fields
+		/// (those are kept visible and already positioned by the equipment patch).
+		/// </summary>
+		private static IEnumerable<GameObject> EnumerateNonWeaponInstances(VisEquipment ve)
+		{
+			foreach (var field in new[]
+			{
+				"m_helmetItemInstance", "m_hairItemInstance", "m_beardItemInstance"
+			})
+			{
+				if (Utils.GetField<VisEquipment>(field).GetValue(ve) is GameObject g && g != null) yield return g;
+			}
+
+			foreach (var field in new[]
+			{
+				"m_chestItemInstances", "m_legItemInstances", "m_shoulderItemInstances", "m_utilityItemInstances", "m_trinketItemInstances"
+			})
+			{
+				if (Utils.GetField<VisEquipment>(field).GetValue(ve) is System.Collections.IEnumerable list)
+				{
+					foreach (var item in list)
+					{
+						if (item is GameObject g && g != null) yield return g;
+					}
+				}
+			}
 		}
 
 		private static void HideNonWeaponEquipment(VisEquipment __instance, Player player)

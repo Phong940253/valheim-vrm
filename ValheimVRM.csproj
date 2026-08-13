@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<Version>1.7.7</Version>
+		<Version>1.7.8</Version>
 		<TargetFramework>net471</TargetFramework>
 		<LangVersion>latest</LangVersion>
 		<Nullable>annotations</Nullable>
@@ -68,6 +68,7 @@
 		<Reference Include="UnityEngine.AnimationModule" HintPath="$(VALHEIM_MANAGED)/UnityEngine.AnimationModule.dll" />
 		<Reference Include="UnityEngine.AssetBundleModule" HintPath="$(VALHEIM_MANAGED)/UnityEngine.AssetBundleModule.dll" />
 		<Reference Include="UnityEngine.CoreModule" HintPath="$(VALHEIM_MANAGED)/UnityEngine.CoreModule.dll" />
+		<Reference Include="UnityEngine.ParticleSystemModule" HintPath="$(VALHEIM_MANAGED)/UnityEngine.ParticleSystemModule.dll" />
 		<Reference Include="UnityEngine.PhysicsModule" HintPath="$(VALHEIM_MANAGED)/UnityEngine.PhysicsModule.dll" />
 		<!--
 		<Reference Include="UnityEngine.ImageConversionModule" HintPath="$(VALHEIM_MANAGED)/UnityEngine.ImageConversionModule.dll" />
