@@ -56,6 +56,28 @@ The mod is built around several key components:
 - Wind simulation for spring bones
 - Profiling system for performance monitoring
 
+### Perf notes (1.8.0)
+
+- `VrmController.FixedUpdate`: wind-cover raycasts (9 physics raycasts/sec) run
+  only for the local player; remote models use raw global wind.
+- `UpdateDistanceCulling` polls at ~4 Hz instead of every FixedUpdate.
+- Hidden vanilla body/ragdoll meshes use `updateWhenOffscreen = false` (no CPU
+  skinning of invisible meshes).
+- `VRMAnimationSync` (remote): 30 Hz sync nearby, ~20 Hz beyond 15 m.
+- `VrmController.SetRemoteAnimatorsEnabled`: while a remote model is distance/
+  visibility culled, its vanilla + VRM Animators are disabled (biggest per-frame
+  saving); re-enabled on restore.
+
+### KeepVanillaWithoutPersonalVrm (global setting, default true)
+
+- Players with no VRM file of their own (and no shared VRM) keep the vanilla
+  Valheim character with full armor/equipment instead of the `___Default.vrm`
+  fallback.
+- `Patch_VisEquipment_UpdateLodgroup` early-returns when the player has no VRM
+  instance (`PlayerToVrmInstance`), so vanilla equipment is never hidden or
+  repositioned for them.
+- Set the setting to `false` to restore the default-avatar fallback.
+
 ## Technical Implementation
 
 ### Harmony Patching

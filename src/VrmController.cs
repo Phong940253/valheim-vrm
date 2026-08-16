@@ -158,6 +158,12 @@ namespace ValheimVRM
 				return;
 			}
 
+			// Poll at ~4 Hz instead of every FixedUpdate: the decision changes on
+			// the scale of meters, not frames, and this runs per player.
+			cullingCheckTimer -= Time.deltaTime;
+			if (cullingCheckTimer > 0) return;
+			cullingCheckTimer = 0.25f;
+
 			float dist = Vector3.Distance(transform.position, Player.m_localPlayer.transform.position);
 			float threshold = Settings.globalSettings.VrmCullingDistance;
 
@@ -176,6 +182,8 @@ namespace ValheimVRM
 				if (tooFar || invisible) SetDistanceCulling(true);
 			}
 		}
+
+		private float cullingCheckTimer;
 
 		private void SetDistanceCulling(bool culled)
 		{
@@ -199,6 +207,40 @@ namespace ValheimVRM
 			foreach (var bone in springBones)
 			{
 				if (bone.SpringBone != null) bone.SpringBone.enabled = !culled;
+			}
+
+			// Remote-only: while culled the model is invisible (or beyond the
+			// culling distance), so neither animator has visible output. The
+			// vanilla Animator was forced to AlwaysAnimate at setup - the biggest
+			// remaining per-frame cost for a culled player. keepAnimatorStateOnDisable
+			// (set in SetToPlayer) makes the re-enable seamless.
+			if (player != null && player != Player.m_localPlayer)
+			{
+				SetRemoteAnimatorsEnabled(!culled);
+			}
+		}
+
+		private Animator m_vanillaAnimator;
+		private Animator m_vrmAnimator;
+
+		private void SetRemoteAnimatorsEnabled(bool enabled)
+		{
+			if (m_vanillaAnimator == null)
+			{
+				m_vanillaAnimator = player.GetField<Player, Animator>("m_animator");
+			}
+			if (m_vanillaAnimator != null && m_vanillaAnimator.enabled != enabled)
+			{
+				m_vanillaAnimator.enabled = enabled;
+			}
+
+			if (visual != null && m_vrmAnimator == null)
+			{
+				m_vrmAnimator = visual.GetComponentInChildren<Animator>();
+			}
+			if (m_vrmAnimator != null && m_vrmAnimator.enabled != enabled)
+			{
+				m_vrmAnimator.enabled = enabled;
 			}
 		}
 
@@ -351,7 +393,9 @@ namespace ValheimVRM
 				cachedSettings = playerName != null ? Settings.GetSettings(playerName) : null;
 			}
 			var settings = cachedSettings;
-			if (settings == null || !settings.HideAllEquipment)
+			// visual is null for players that keep the vanilla character (no VRM),
+			// so their equipment must never be scanned or hidden.
+			if (settings == null || !settings.HideAllEquipment || visual == null)
 			{
 				nonWeaponRenderers = null;
 				vfxChildren = null;
@@ -504,11 +548,17 @@ namespace ValheimVRM
 			UpdateDistanceCulling();
 			if (distanceCullingActive) return;
 
-			if (springBones.Length > 0 && !Settings.globalSettings.ForceWindDisabled)
-			{
-				Vector3 worldWindDir = EnvMan.instance?.GetWindDir() ?? Vector3.back;
-				float worldWindIntensity = EnvMan.instance?.GetWindIntensity() ?? 0.3f;
+			if (springBones.Length == 0 || Settings.globalSettings.ForceWindDisabled) return;
 
+			Vector3 worldWindDir = EnvMan.instance?.GetWindDir() ?? Vector3.back;
+			float worldWindIntensity = EnvMan.instance?.GetWindIntensity() ?? 0.3f;
+
+			// Sheltered-wind cover is only meaningful for the local player's own
+			// model: the 9 physics raycasts per second per player add up quickly
+			// on crowded servers, so remote models use the raw global wind.
+			bool localPlayer = player == Player.m_localPlayer;
+			if (localPlayer)
+			{
 				windCoverUpdateTimer -= Time.deltaTime;
 				if (windCoverUpdateTimer < 0)
 				{
@@ -526,39 +576,43 @@ namespace ValheimVRM
 
 					windCoverPercentage /= windCoverRays.Length;
 				}
+			}
+			else
+			{
+				windCoverPercentage = 0f;
+			}
 
-				foreach (var windItem in windItems)
+			foreach (var windItem in windItems)
+			{
+				windItem.Time -= Time.deltaTime;
+				if (windItem.Time < 0)
 				{
-					windItem.Time -= Time.deltaTime;
-					if (windItem.Time < 0)
-					{
-						windItem.Time = Random.Range(windIntervalRange.x, windIntervalRange.y);
-						windItem.Dir = (worldWindDir +
-								new Vector3(
-									Random.Range(-windDirRange, windDirRange),
-									Random.Range(-windDirRange, windDirRange),
-									Random.Range(-windDirRange, windDirRange)
-								)
-							).normalized;
-						windItem.Rise = Random.Range(windRiseRange.x, windRiseRange.y);
-						windItem.Sit = Random.Range(windSitRange.x, windSitRange.y);
-						windItem.MaxFactor = Random.Range(windStrengthRange.x, windStrengthRange.y);
-					}
+					windItem.Time = Random.Range(windIntervalRange.x, windIntervalRange.y);
+					windItem.Dir = (worldWindDir +
+							new Vector3(
+								Random.Range(-windDirRange, windDirRange),
+								Random.Range(-windDirRange, windDirRange),
+								Random.Range(-windDirRange, windDirRange)
+							)
+						).normalized;
+					windItem.Rise = Random.Range(windRiseRange.x, windRiseRange.y);
+					windItem.Sit = Random.Range(windSitRange.x, windSitRange.y);
+					windItem.MaxFactor = Random.Range(windStrengthRange.x, windStrengthRange.y);
+				}
 
-					float factor = windItem.Time < windItem.Rise
-						? windItem.MaxFactor * windItem.Time / windItem.Rise
-						: windItem.MaxFactor * (1 - (windItem.Time - windItem.Rise) / windItem.Sit);
+				float factor = windItem.Time < windItem.Rise
+					? windItem.MaxFactor * windItem.Time / windItem.Rise
+					: windItem.MaxFactor * (1 - (windItem.Time - windItem.Rise) / windItem.Sit);
 
-					// windCoverPercentage attenuates to 10% when fully sheltered; * 3 scales intensity to a useful spring bone range.
+				// windCoverPercentage attenuates to 10% when fully sheltered; * 3 scales intensity to a useful spring bone range.
 				windItem.CachedWindForce = windItem.Dir * (factor * (worldWindIntensity * Mathf.Lerp(1, 0.1f, windCoverPercentage) * 3));
-				}
+			}
 
-				for (int i = 0; i < springBones.Length; i++)
-				{
-					Vector3 sumForce = springBones[i].InitialGravityForce + (Settings.globalSettings.AllowIndividualWinds ? windItems[i] : windItems[0]).CachedWindForce;
-					springBones[i].SpringBone.m_gravityDir = sumForce.normalized;
-					springBones[i].SpringBone.m_gravityPower = sumForce.magnitude;
-				}
+			for (int i = 0; i < springBones.Length; i++)
+			{
+				Vector3 sumForce = springBones[i].InitialGravityForce + (Settings.globalSettings.AllowIndividualWinds ? windItems[i] : windItems[0]).CachedWindForce;
+				springBones[i].SpringBone.m_gravityDir = sumForce.normalized;
+				springBones[i].SpringBone.m_gravityPower = sumForce.magnitude;
 			}
 		}
 
@@ -637,6 +691,11 @@ namespace ValheimVRM
 			{
 				var vrm = VrmManager.VrmDic[playerName];
 
+				// The settings hash may never have been computed (it is only
+				// recalculated conditionally) and ZPackage throws on a null byte[].
+				vrm.EnsureHashes();
+				if (vrm.SrcHash == null || vrm.SettingsHash == null) return;
+
 				Debug.Log($"[ValheimVRM] sharing {playerName} vrm, hashes are {vrm.SrcHash.GetHaxadecimalString()} {vrm.SettingsHash.GetHaxadecimalString()}");
 
 				if (ZNet.instance.IsServer())
@@ -687,6 +746,9 @@ namespace ValheimVRM
 
 				var settings = Settings.GetSettings(kvp.Key);
 				if (!settings.AllowShare) continue;
+
+				kvp.Value.EnsureHashes();
+				if (kvp.Value.SrcHash == null || kvp.Value.SettingsHash == null) continue;
 
 				view.InvokeRPC(sender, nameof(RPC_SendHashes), kvp.Key, new ZPackage(kvp.Value.SrcHash), new ZPackage(kvp.Value.SettingsHash));
 			}
@@ -864,15 +926,13 @@ namespace ValheimVRM
 
 							File.WriteAllBytes(vrmPath, vrmBytes);
 
-							if (!process.UseExistingSettings)
-							{
-								newVrm.RecalculateSettingsHash();
-							}
+							newVrm.RecalculateSettingsHash();
 							CoroutineHelper.Instance.StartCoroutine(newVrm.SetToPlayer(player));
 						}
 					}
 
 					VRM vrm = VrmManager.VrmDic[vrmName];
+					vrm.EnsureHashes();
 
 					if (ZNet.instance.IsServer())
 					{
@@ -881,6 +941,7 @@ namespace ValheimVRM
 
 						foreach (var peer in peers)
 						{
+							if (vrm.SrcHash == null || vrm.SettingsHash == null) continue;
 							view.InvokeRPC(peer.m_uid, nameof(RPC_SendHashes), vrmName, new ZPackage(vrm.SrcHash), new ZPackage(vrm.SettingsHash));
 						}
 					}

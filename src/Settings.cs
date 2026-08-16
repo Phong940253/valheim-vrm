@@ -388,6 +388,11 @@ namespace ValheimVRM
             // Re-encodes VRM textures as mipmapped DXT at load time. Raw RGBA32
             // textures waste GPU bandwidth and cause FPS drops with models on screen.
             public bool CompressTextures = true;
+            // Players without a VRM file of their own keep the vanilla Valheim
+            // character (full armor/equipment display) instead of being replaced
+            // by the ___Default avatar. Disable to restore the default-avatar
+            // fallback for everyone.
+            public bool KeepVanillaWithoutPersonalVrm = true;
 
             public override void OnUpdate(Dictionary<string, object> oldValues)
             {

@@ -48,11 +48,14 @@ namespace ValheimVRM
 
 		public void RecalculateSrcBytesHash()
 		{
+			if (Src == null) return;
+
+			var src = Src;
 			Task.Run(() =>
 			{
 				using (var md5 = System.Security.Cryptography.MD5.Create())
 				{
-					var hash = md5.ComputeHash(Src);
+					var hash = md5.ComputeHash(src);
 					lock (this)
 					{
 						SrcHash = hash;
@@ -65,18 +68,50 @@ namespace ValheimVRM
 
 		public void RecalculateSettingsHash()
 		{
+			var settings = Settings.GetSettings(Name);
+			if (settings == null) return;
+
+			// Compute the input on the main thread to avoid racing a settings reload
+			// while the background task reads it.
+			byte[] inputBytes = System.Text.Encoding.ASCII.GetBytes(settings.ToStringDiffOnly());
+
 			Task.Run(() =>
 			{
 				using (var md5 = System.Security.Cryptography.MD5.Create())
 				{
-					byte[] inputBytes = System.Text.Encoding.ASCII.GetBytes(Settings.GetSettings(Name).ToStringDiffOnly());
-
 					lock (this)
 					{
-						SettingsHash = md5.ComputeHash(inputBytes); ;
+						SettingsHash = md5.ComputeHash(inputBytes);
 					}
 				}
 			});
+		}
+
+		/// <summary>
+		/// Synchronously fills in any missing hashes so RPC payloads never carry a
+		/// null byte[] (ZPackage throws on null). Cheap when already computed.
+		/// </summary>
+		public void EnsureHashes()
+		{
+			if (SrcHash == null && Src != null)
+			{
+				using (var md5 = System.Security.Cryptography.MD5.Create())
+				{
+					SrcHash = md5.ComputeHash(Src);
+				}
+			}
+
+			if (SettingsHash == null)
+			{
+				var settings = Settings.GetSettings(Name);
+				if (settings != null)
+				{
+					using (var md5 = System.Security.Cryptography.MD5.Create())
+					{
+						SettingsHash = md5.ComputeHash(System.Text.Encoding.ASCII.GetBytes(settings.ToStringDiffOnly()));
+					}
+				}
+			}
 		}
 		public class Timer : IDisposable
 		{
@@ -363,7 +398,10 @@ namespace ValheimVRM
 				foreach (var smr in originalVisual.GetComponentsInChildren<SkinnedMeshRenderer>())
 				{
 					smr.forceRenderingOff = true;
-					smr.updateWhenOffscreen = true;
+					// The vanilla body is never seen again once the VRM replaces it,
+					// and its bones still animate (Animator + VRM bone writes drive
+					// the equipment SMRs), so stop CPU skinning of the hidden mesh.
+					smr.updateWhenOffscreen = false;
 					yield return null;
 				}
 			}

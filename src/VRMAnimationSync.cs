@@ -157,15 +157,25 @@ namespace ValheimVRM
 					return Vector3.zero;
 			}
 		}
+		// Remote players get pose sync at ~30 Hz; visually indistinguishable from
+		// 60 Hz but halves the per-frame bone-write work for every other player.
+		// Distant remotes (> 15 m) drop to ~20 Hz since pose differences are
+		// invisible at that range.
+		const float DistantRemoteThresholdSqr = 15f * 15f;
+
 		void Update()
 		{
-			// Remote players get pose sync at ~30 Hz; visually indistinguishable from
-			// 60 Hz but halves the per-frame bone-write work for every other player.
 			runThisFrame = true;
 			if (!isLocalPlayer)
 			{
 				remoteFrameCounter++;
-				if ((remoteFrameCounter & 1) != 0) runThisFrame = false;
+				int stride = 2;
+				if (Player.m_localPlayer != null &&
+					Vector3.SqrMagnitude(transform.position - Player.m_localPlayer.transform.position) > DistantRemoteThresholdSqr)
+				{
+					stride = 3;
+				}
+				if ((remoteFrameCounter % stride) != 0) runThisFrame = false;
 			}
 
 			if (!runThisFrame || !bonesCached) return;

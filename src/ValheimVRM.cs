@@ -355,10 +355,9 @@ namespace ValheimVRM
 		{
 			if (vrm != null)
 			{
-				if (settingsUpdated)
-				{
-					vrm.RecalculateSettingsHash();
-				}
+				// Always compute the settings hash (async + idempotent) so RPC payloads
+				// never carry a null hash; the old conditional left it null on many paths.
+				vrm.RecalculateSettingsHash();
 
 				CoroutineHelper.Instance.StartCoroutine(vrm.SetToPlayer(player));
 			}
@@ -389,6 +388,10 @@ namespace ValheimVRM
 			if (!__instance.m_isPlayer) return;
 			var player = __instance.GetComponent<Player>();
 			if (player == null) return;
+
+			// Players without a VRM instance keep the vanilla Valheim character:
+			// never hide or reposition their armor/equipment.
+			if (!VrmManager.PlayerToVrmInstance.TryGetValue(player, out var vrmGo) || vrmGo == null) return;
 
 			// Per-character settings are registered for every player in Player.Awake,
 			// so this is safe to query even before a VRM instance exists.
@@ -841,7 +844,9 @@ namespace ValheimVRM
 				foreach (var smr in ragdoll.GetComponentsInChildren<SkinnedMeshRenderer>())
 				{
 					smr.forceRenderingOff = true;
-					smr.updateWhenOffscreen = true;
+					// The vanilla ragdoll mesh stays hidden (the VRM replaces it);
+					// bones still animate via the ragdoll, so skip CPU skinning.
+					smr.updateWhenOffscreen = false;
 				}
 
 				// Check if Animator already exists before adding one
@@ -1225,6 +1230,14 @@ namespace ValheimVRM
 							vrmPath = sharedPath;
 							isShared = true;
 						}
+						else if (Settings.globalSettings.KeepVanillaWithoutPersonalVrm)
+						{
+							// No VRM file of the player's own: keep the vanilla Valheim
+							// character (full armor/equipment display) instead of the
+							// ___Default avatar. This branch also keeps VrmManager clean
+							// for this player, so the equipment patch below skips them.
+							vrmPath = null;
+						}
 						else if (!VrmManager.VrmDic.ContainsKey("___Default"))
 						{
 							// Default character fallback
@@ -1267,10 +1280,9 @@ namespace ValheimVRM
 		{
 			if (vrm != null)
 			{
-				if (settingsUpdated)
-				{
-					vrm.RecalculateSettingsHash();
-				}
+				// Always compute the settings hash (async + idempotent) so RPC payloads
+				// never carry a null hash; the old conditional left it null on many paths.
+				vrm.RecalculateSettingsHash();
 
 
 				CoroutineHelper.Instance.StartCoroutine(vrm.SetToPlayer(player));

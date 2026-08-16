@@ -1,3 +1,32 @@
+## Update 1.8.0
+
+**BepInEx:** 5.4.23.3
+
+**Valheim:** 0.221.12 (n-36)
+
+### New Feature: Keep Vanilla Characters for Players Without a VRM
+
+- Players with no VRM file of their own (and no shared VRM) now keep the vanilla
+  Valheim character with full armor/equipment display instead of being replaced
+  by the `___Default` avatar.
+- New global setting `KeepVanillaWithoutPersonalVrm` (default `true`). Set it to
+  `false` to restore the default-avatar fallback for everyone.
+
+### Performance
+
+- **Wind cover raycasts now run only for the local player** — the 9 physics
+  raycasts per second previously ran for every VRM player on the server
+  (crowded servers could hit 90+ raycasts/sec); remote models use the raw
+  global wind.
+- **Distance-culling checks rate-limited to ~4 Hz** (was every FixedUpdate per
+  player).
+- **Hidden vanilla body/ragdoll meshes no longer CPU-skin every frame**
+  (`updateWhenOffscreen` off); skeleton bones still animate, so equipment
+  stays attached.
+- **Remote models > 15 m away sync at ~20 Hz** instead of 30 Hz.
+- **Remote animators (vanilla + VRM) are disabled while distance/visibility
+  culled**, removing the biggest remaining per-frame cost for far-away players.
+
 ## Update 1.7.0
 
 **BepInEx:** 5.4.23.3
